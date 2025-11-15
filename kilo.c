@@ -20,7 +20,7 @@
 typedef struct {
     unsigned size;
     char *chars;
-} editor_row;
+} editor_row_t;
 
 typedef struct {
     unsigned cx;
@@ -28,7 +28,7 @@ typedef struct {
     unsigned screen_rows;
     unsigned screen_cols;
     unsigned num_erows;
-    editor_row erow;
+    editor_row_t *erows;
     struct termios orig_termios;
 } editor_config_t;
 
@@ -271,13 +271,13 @@ void editor_draw_rows(abuf *ab) {
                 abuf_append(ab, "~", 1);
             }
         } else {
-            unsigned len = editor_cfg.erow.size;
+            unsigned len = editor_cfg.erows[y].size;
 
             if (len > editor_cfg.screen_cols) {
                 len = editor_cfg.screen_cols;
             }
 
-            abuf_append(ab, editor_cfg.erow.chars, len);
+            abuf_append(ab, editor_cfg.erows[y].chars, len);
         }
 
         abuf_append(ab, "\x1b[K", 3);
@@ -355,6 +355,18 @@ int get_window_size(unsigned *rows, unsigned *cols) {
     }
 }
 
+void editor_append_row(char *str, size_t len) {
+    editor_cfg.erows = (editor_row_t *)realloc(
+        editor_cfg.erows, sizeof(editor_row_t) * (editor_cfg.num_erows + 1));
+
+    unsigned at = editor_cfg.num_erows;
+    editor_cfg.erows[at].size = len;
+    editor_cfg.erows[at].chars = (char *)calloc(len + 1, sizeof(char));
+    memcpy(editor_cfg.erows[at].chars, str, len);
+    editor_cfg.erows[at].chars[len] = '\0';
+    editor_cfg.num_erows += 1;
+}
+
 void editor_open(char *filename) {
     FILE *fp = fopen(filename, "r");
 
@@ -364,19 +376,18 @@ void editor_open(char *filename) {
 
     char *line = NULL;
     size_t line_cap = 0;
-    ssize_t line_len = getline(&line, &line_cap, fp);
+    ssize_t line_len = 0;
 
     if (line_len != -1) {
-        while (line_len > 0 &&
-               (line[line_len - 1] == '\n' || line[line_len - 1] == '\r')) {
-            line_len -= 1;
-        }
+        while ((line_len = getline(&line, &line_cap, fp)) != -1) {
 
-        editor_cfg.erow.size = line_len;
-        editor_cfg.erow.chars = (char *)calloc(line_len + 1, sizeof(char));
-        memcpy(editor_cfg.erow.chars, line, line_len);
-        editor_cfg.erow.chars[line_len] = '\0';
-        editor_cfg.num_erows = 1;
+            while (line_len > 0 &&
+                   (line[line_len - 1] == '\n' || line[line_len - 1] == '\r')) {
+                line_len -= 1;
+            }
+
+            editor_append_row(line, line_len);
+        }
     }
 
     free(line);
@@ -387,6 +398,7 @@ void editor_init() {
     editor_cfg.cx = 0;
     editor_cfg.cy = 0;
     editor_cfg.num_erows = 0;
+    editor_cfg.erows = NULL;
 
     if (get_window_size(&editor_cfg.screen_rows, &editor_cfg.screen_cols) == -1) {
         die("init_editor :: get_window_size");
