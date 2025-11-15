@@ -23,6 +23,8 @@ typedef struct {
 
 static editor_config_t editor_cfg;
 
+enum editor_key { ARROW_UP = 1000, ARROW_LEFT, ARROW_DOWN, ARROW_RIGHT };
+
 typedef struct {
     char *data;
     unsigned len;
@@ -83,7 +85,7 @@ void enable_raw_mode() {
     }
 }
 
-char editor_read_key() {
+unsigned editor_read_key() {
     int nread = 0;
     char c = '\0';
 
@@ -93,28 +95,63 @@ char editor_read_key() {
         }
     }
 
-    return c;
+    if (c == '\x1b') {
+        char seq[3] = {0};
+
+        if (read(STDIN_FILENO, &seq[0], 1) != 1) {
+            return '\x1b';
+        }
+
+        if (read(STDIN_FILENO, &seq[1], 1) != 1) {
+            return '\x1b';
+        }
+
+        if (seq[0] == '[') {
+            switch (seq[1]) {
+                case 'A':
+                    return ARROW_UP;
+                case 'B':
+                    return ARROW_DOWN;
+                case 'C':
+                    return ARROW_RIGHT;
+                case 'D':
+                    return ARROW_LEFT;
+            }
+        }
+
+        return '\x1b';
+    } else {
+        return c;
+    }
 }
 
-void editor_move_cursor(char key) {
+void editor_move_cursor(unsigned key) {
     switch (key) {
-        case 'a':
-            editor_cfg.cx -= 1;
+        case ARROW_LEFT:
+            if (editor_cfg.cx != 0) {
+                editor_cfg.cx -= 1;
+            }
             break;
-        case 'd':
-            editor_cfg.cx += 1;
+        case ARROW_RIGHT:
+            if (editor_cfg.cx != editor_cfg.screen_cols - 1) {
+                editor_cfg.cx += 1;
+            }
             break;
-        case 'w':
-            editor_cfg.cy -= 1;
+        case ARROW_UP:
+            if (editor_cfg.cy != 0) {
+                editor_cfg.cy -= 1;
+            }
             break;
-        case 's':
-            editor_cfg.cy += 1;
+        case ARROW_DOWN:
+            if (editor_cfg.cy != editor_cfg.screen_rows - 1) {
+                editor_cfg.cy += 1;
+            }
             break;
     }
 }
 
 void editor_process_keypress() {
-    char c = editor_read_key();
+    unsigned c = editor_read_key();
 
     switch (c) {
         case CTRL_KEY('q'):
@@ -122,10 +159,10 @@ void editor_process_keypress() {
             write(STDOUT_FILENO, "\x1b[H", 3);
             exit(0);
             break;
-        case 'w':
-        case 'a':
-        case 's':
-        case 'd':
+        case ARROW_UP:
+        case ARROW_LEFT:
+        case ARROW_DOWN:
+        case ARROW_RIGHT:
             editor_move_cursor(c);
             break;
     }
@@ -174,7 +211,8 @@ void editor_refresh_screen() {
     editor_draw_rows(&ab);
 
     char buf[32] = {0};
-    unsigned len = snprintf(buf, sizeof(buf), "\x1b[%u;%uH", editor_cfg.cy + 1, editor_cfg.cx + 1);
+    unsigned len =
+        snprintf(buf, sizeof(buf), "\x1b[%u;%uH", editor_cfg.cy + 1, editor_cfg.cx + 1);
     abuf_append(&ab, buf, len);
 
     abuf_append(&ab, "\x1b[?25h", 6);
