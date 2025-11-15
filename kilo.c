@@ -1,6 +1,9 @@
+#include <sys/ioctl.h>
+
 #include <termios.h>
 #include <unistd.h>
 
+#include <ctype.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,6 +11,8 @@
 #define CTRL_KEY(key) (key) & 0x1f
 
 typedef struct {
+    unsigned screen_rows;
+    unsigned screen_cols;
     struct termios orig_termios;
 } editor_config;
 
@@ -74,7 +79,7 @@ void editor_process_keypress() {
 }
 
 void editor_draw_rows() {
-    for (unsigned y = 0; y < 24; y++) {
+    for (unsigned y = 0; y < e_config.screen_rows; y++) {
         write(STDOUT_FILENO, "~\r\n", 3);
     }
 }
@@ -88,8 +93,51 @@ void editor_refresh_screen() {
     write(STDOUT_FILENO, "\x1b[H", 3);
 }
 
+int get_cursor_position(unsigned *rows, unsigned *cols) {
+    if (write(STDOUT_FILENO, "\x1b[6n", 4) != 4) {
+        return -1;
+    }
+
+    printf("\r\n");
+
+    char c = '\0';
+    while (read(STDIN_FILENO, &c, 1) == 1) {
+        if (iscntrl(c)) {
+            printf("%d\r\n", c);
+        } else {
+            printf("%d ('%c')\r\n", c, c);
+        }
+    }
+
+    editor_read_key();
+    return -1;
+}
+
+int get_window_size(unsigned *rows, unsigned *cols) {
+    struct winsize ws;
+
+    if (1 || ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
+        if (write(STDOUT_FILENO, "\x1b[999C\x1b[999B", 12) != 12) {
+            return -1;
+        }
+
+        return get_cursor_position(rows, cols);
+    } else {
+        *rows = ws.ws_row;
+        *cols = ws.ws_col;
+        return 0;
+    }
+}
+
+void init_editor() {
+    if (get_window_size(&e_config.screen_rows, &e_config.screen_cols) == -1) {
+        die("init_editor :: get_window_size");
+    }
+}
+
 int main() {
     enable_raw_mode();
+    init_editor();
 
     while (1) {
         editor_refresh_screen();
