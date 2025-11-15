@@ -1,3 +1,7 @@
+#define _DEFAULT_SOURCE
+#define _BSD_SOURCE
+#define _GNU_SOURCE
+
 #include <string.h>
 #include <sys/ioctl.h>
 
@@ -242,7 +246,7 @@ void editor_process_keypress() {
 void editor_draw_rows(abuf *ab) {
     for (unsigned y = 0; y < editor_cfg.screen_rows; y++) {
         if (y >= editor_cfg.num_erows) {
-            if (y == editor_cfg.screen_rows / 3) {
+            if (editor_cfg.num_erows == 0 && y == editor_cfg.screen_rows / 3) {
                 char welcome[80] = {0};
                 unsigned welcome_len = snprintf(
                     welcome, sizeof(welcome), "Kilo Editor -- version %s", KILO_VERSION);
@@ -351,15 +355,32 @@ int get_window_size(unsigned *rows, unsigned *cols) {
     }
 }
 
-void editor_open() {
-    char *line = "Hello, world!";
-    ssize_t line_len = 13;
+void editor_open(char *filename) {
+    FILE *fp = fopen(filename, "r");
 
-    editor_cfg.erow.size = line_len;
-    editor_cfg.erow.chars = (char *)calloc(line_len + 1, sizeof(char));
-    memcpy(editor_cfg.erow.chars, line, line_len);
-    editor_cfg.erow.chars[line_len] = '\0';
-    editor_cfg.num_erows = 1;
+    if (fp == NULL) {
+        die("editor_open :: fopen");
+    }
+
+    char *line = NULL;
+    size_t line_cap = 0;
+    ssize_t line_len = getline(&line, &line_cap, fp);
+
+    if (line_len != -1) {
+        while (line_len > 0 &&
+               (line[line_len - 1] == '\n' || line[line_len - 1] == '\r')) {
+            line_len -= 1;
+        }
+
+        editor_cfg.erow.size = line_len;
+        editor_cfg.erow.chars = (char *)calloc(line_len + 1, sizeof(char));
+        memcpy(editor_cfg.erow.chars, line, line_len);
+        editor_cfg.erow.chars[line_len] = '\0';
+        editor_cfg.num_erows = 1;
+    }
+
+    free(line);
+    fclose(fp);
 }
 
 void editor_init() {
@@ -372,10 +393,13 @@ void editor_init() {
     }
 }
 
-int main() {
+int main(int argc, char *argv[]) {
     enable_raw_mode();
     editor_init();
-    editor_open();
+
+    if (argc >= 2) {
+        editor_open(argv[1]);
+    }
 
     while (1) {
         editor_refresh_screen();
