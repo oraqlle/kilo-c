@@ -192,11 +192,17 @@ void editor_move_cursor(unsigned key) {
         case ARROW_LEFT:
             if (editor_cfg.cx != 0) {
                 editor_cfg.cx -= 1;
+            } else if (editor_cfg.cy > 0) {
+                editor_cfg.cy -= 1;
+                editor_cfg.cx = editor_cfg.erows[editor_cfg.cy].size;
             }
             break;
         case ARROW_RIGHT:
             if (erow != NULL && editor_cfg.cx < erow->size) {
                 editor_cfg.cx += 1;
+            } else if (erow != NULL && editor_cfg.cx == erow->size) {
+                editor_cfg.cy += 1;
+                editor_cfg.cx = 0;
             }
             break;
         case ARROW_UP:
