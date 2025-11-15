@@ -25,6 +25,7 @@ typedef struct {
 typedef struct {
     unsigned cx;
     unsigned cy;
+    unsigned row_offset;
     unsigned screen_rows;
     unsigned screen_cols;
     unsigned num_erows;
@@ -200,7 +201,7 @@ void editor_move_cursor(unsigned key) {
             }
             break;
         case ARROW_DOWN:
-            if (editor_cfg.cy != editor_cfg.screen_rows - 1) {
+            if (editor_cfg.cy < editor_cfg.num_erows) {
                 editor_cfg.cy += 1;
             }
             break;
@@ -245,7 +246,8 @@ void editor_process_keypress() {
 
 void editor_draw_rows(abuf *ab) {
     for (unsigned y = 0; y < editor_cfg.screen_rows; y++) {
-        if (y >= editor_cfg.num_erows) {
+        unsigned file_row = y + editor_cfg.row_offset;
+        if (file_row >= editor_cfg.num_erows) {
             if (editor_cfg.num_erows == 0 && y == editor_cfg.screen_rows / 3) {
                 char welcome[80] = {0};
                 unsigned welcome_len = snprintf(
@@ -271,13 +273,13 @@ void editor_draw_rows(abuf *ab) {
                 abuf_append(ab, "~", 1);
             }
         } else {
-            unsigned len = editor_cfg.erows[y].size;
+            unsigned len = editor_cfg.erows[file_row].size;
 
             if (len > editor_cfg.screen_cols) {
                 len = editor_cfg.screen_cols;
             }
 
-            abuf_append(ab, editor_cfg.erows[y].chars, len);
+            abuf_append(ab, editor_cfg.erows[file_row].chars, len);
         }
 
         abuf_append(ab, "\x1b[K", 3);
@@ -287,7 +289,19 @@ void editor_draw_rows(abuf *ab) {
     }
 }
 
+void editor_scroll() {
+    if (editor_cfg.cy < editor_cfg.row_offset) {
+        editor_cfg.row_offset = editor_cfg.cy;
+    }
+
+    if (editor_cfg.cy >= editor_cfg.row_offset + editor_cfg.screen_rows) {
+        editor_cfg.row_offset = editor_cfg.cy - editor_cfg.screen_rows + 1;
+    }
+}
+
 void editor_refresh_screen() {
+    editor_scroll();
+
     abuf ab = ABUF_INIT;
 
     abuf_append(&ab, "\x1b[?25l", 6);
@@ -297,7 +311,7 @@ void editor_refresh_screen() {
 
     char buf[32] = {0};
     unsigned len =
-        snprintf(buf, sizeof(buf), "\x1b[%u;%uH", editor_cfg.cy + 1, editor_cfg.cx + 1);
+        snprintf(buf, sizeof(buf), "\x1b[%u;%uH", (editor_cfg.cy - editor_cfg.row_offset), editor_cfg.cx + 1);
     abuf_append(&ab, buf, len);
 
     abuf_append(&ab, "\x1b[?25h", 6);
@@ -397,6 +411,7 @@ void editor_open(char *filename) {
 void editor_init() {
     editor_cfg.cx = 0;
     editor_cfg.cy = 0;
+    editor_cfg.row_offset = 0;
     editor_cfg.num_erows = 0;
     editor_cfg.erows = NULL;
 
