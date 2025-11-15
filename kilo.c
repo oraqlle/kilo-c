@@ -80,7 +80,11 @@ void editor_process_keypress() {
 
 void editor_draw_rows() {
     for (unsigned y = 0; y < e_config.screen_rows; y++) {
-        write(STDOUT_FILENO, "~\r\n", 3);
+        write(STDOUT_FILENO, "~", 1);
+
+        if (y < e_config.screen_rows - 1) {
+        write(STDOUT_FILENO, "\r\n", 2);
+        }
     }
 }
 
@@ -89,28 +93,40 @@ void editor_refresh_screen() {
     write(STDOUT_FILENO, "\x1b[H", 3);
 
     editor_draw_rows();
-
     write(STDOUT_FILENO, "\x1b[H", 3);
 }
 
 int get_cursor_position(unsigned *rows, unsigned *cols) {
+    char buf[32] = {0};
+    unsigned i = 0;
+
     if (write(STDOUT_FILENO, "\x1b[6n", 4) != 4) {
         return -1;
     }
 
-    printf("\r\n");
-
-    char c = '\0';
-    while (read(STDIN_FILENO, &c, 1) == 1) {
-        if (iscntrl(c)) {
-            printf("%d\r\n", c);
-        } else {
-            printf("%d ('%c')\r\n", c, c);
+    while (i < sizeof(buf) - 1) {
+        if (read(STDIN_FILENO, &buf[i], 1) != 1) {
+            break;
         }
+
+        if (buf[i] == 'R') {
+            break;
+        }
+
+        i += 1;
     }
 
-    editor_read_key();
-    return -1;
+    buf[i] = '\0';
+
+    if (buf[0] != '\x1b' || buf[1] != '[') {
+        return -1;
+    }
+
+    if (sscanf(&buf[2], "%u;%u", rows, cols) != 2) {
+        return -1;
+    }
+
+    return 0;
 }
 
 int get_window_size(unsigned *rows, unsigned *cols) {
