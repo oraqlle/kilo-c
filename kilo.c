@@ -9,6 +9,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define KILO_VERSION "0.0.1"
+
 #define CTRL_KEY(key) (key) & 0x1f
 
 typedef struct {
@@ -43,7 +45,6 @@ void abuf_free(abuf *ab) {
     ab->data = NULL;
     ab->len = 0;
 }
-
 
 void die(const char *str) {
     write(STDOUT_FILENO, "\x1b[2J", 4);
@@ -107,7 +108,30 @@ void editor_process_keypress() {
 
 void editor_draw_rows(abuf *ab) {
     for (unsigned y = 0; y < e_config.screen_rows; y++) {
-        abuf_append(ab, "~", 1);
+        if (y == e_config.screen_rows / 3) {
+            char welcome[80] = {0};
+            unsigned welcome_len = snprintf(welcome, sizeof(welcome),
+                                            "Kilo Editor -- version %s", KILO_VERSION);
+
+            if (welcome_len > e_config.screen_cols) {
+                welcome_len = e_config.screen_cols;
+            }
+
+            unsigned padding = (e_config.screen_cols - welcome_len) / 2;
+
+            if (padding != 0) {
+                abuf_append(ab, "~", 1);
+            }
+
+            while (padding--) {
+                abuf_append(ab, " ", 1);
+            }
+
+            abuf_append(ab, welcome, welcome_len);
+
+        } else {
+            abuf_append(ab, "~", 1);
+        }
 
         abuf_append(ab, "\x1b[K", 4);
         if (y < e_config.screen_rows - 1) {
@@ -166,7 +190,7 @@ int get_cursor_position(unsigned *rows, unsigned *cols) {
 int get_window_size(unsigned *rows, unsigned *cols) {
     struct winsize ws;
 
-    if (1 || ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
         if (write(STDOUT_FILENO, "\x1b[999C\x1b[999B", 12) != 12) {
             return -1;
         }
