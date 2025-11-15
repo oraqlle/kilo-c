@@ -1,3 +1,4 @@
+#include <string.h>
 #include <sys/ioctl.h>
 
 #include <termios.h>
@@ -17,6 +18,32 @@ typedef struct {
 } editor_config;
 
 static editor_config e_config;
+
+typedef struct {
+    char *data;
+    unsigned len;
+} abuf;
+
+#define ABUF_INIT {NULL, 0}
+
+void abuf_append(abuf *ab, const char *str, unsigned len) {
+    char *new = realloc(ab->data, ab->len + len);
+
+    if (new == NULL) {
+        return;
+    }
+
+    memcpy(&new[ab->len], str, len);
+    ab->data = new;
+    ab->len += len;
+}
+
+void abuf_free(abuf *ab) {
+    free(ab->data);
+    ab->data = NULL;
+    ab->len = 0;
+}
+
 
 void die(const char *str) {
     write(STDOUT_FILENO, "\x1b[2J", 4);
@@ -78,22 +105,27 @@ void editor_process_keypress() {
     }
 }
 
-void editor_draw_rows() {
+void editor_draw_rows(abuf *ab) {
     for (unsigned y = 0; y < e_config.screen_rows; y++) {
-        write(STDOUT_FILENO, "~", 1);
+        abuf_append(ab, "~", 1);
 
         if (y < e_config.screen_rows - 1) {
-        write(STDOUT_FILENO, "\r\n", 2);
+            abuf_append(ab, "\r\n", 2);
         }
     }
 }
 
 void editor_refresh_screen() {
-    write(STDOUT_FILENO, "\x1b[2J", 4);
-    write(STDOUT_FILENO, "\x1b[H", 3);
+    abuf ab = ABUF_INIT;
 
-    editor_draw_rows();
-    write(STDOUT_FILENO, "\x1b[H", 3);
+    abuf_append(&ab, "\x1b[2J", 4);
+    abuf_append(&ab, "\x1b[H", 3);
+
+    editor_draw_rows(&ab);
+    abuf_append(&ab, "\x1b[H", 3);
+
+    write(STDOUT_FILENO, ab.data, ab.len);
+    abuf_free(&ab);
 }
 
 int get_cursor_position(unsigned *rows, unsigned *cols) {
