@@ -26,6 +26,7 @@ typedef struct {
     unsigned cx;
     unsigned cy;
     unsigned row_offset;
+    unsigned col_offset;
     unsigned screen_rows;
     unsigned screen_cols;
     unsigned num_erows;
@@ -191,9 +192,7 @@ void editor_move_cursor(unsigned key) {
             }
             break;
         case ARROW_RIGHT:
-            if (editor_cfg.cx != editor_cfg.screen_cols - 1) {
-                editor_cfg.cx += 1;
-            }
+            editor_cfg.cx += 1;
             break;
         case ARROW_UP:
             if (editor_cfg.cy != 0) {
@@ -273,13 +272,18 @@ void editor_draw_rows(abuf *ab) {
                 abuf_append(ab, "~", 1);
             }
         } else {
-            unsigned len = editor_cfg.erows[file_row].size;
+            long len = editor_cfg.erows[file_row].size - editor_cfg.col_offset;
+
+            if (len < 0) {
+                len = 0;
+            }
 
             if (len > editor_cfg.screen_cols) {
                 len = editor_cfg.screen_cols;
             }
 
-            abuf_append(ab, editor_cfg.erows[file_row].chars, len);
+            abuf_append(ab, &editor_cfg.erows[file_row].chars[editor_cfg.col_offset],
+                        len);
         }
 
         abuf_append(ab, "\x1b[K", 3);
@@ -297,6 +301,14 @@ void editor_scroll() {
     if (editor_cfg.cy >= editor_cfg.row_offset + editor_cfg.screen_rows) {
         editor_cfg.row_offset = editor_cfg.cy - editor_cfg.screen_rows + 1;
     }
+
+    if (editor_cfg.cx < editor_cfg.col_offset) {
+        editor_cfg.col_offset = editor_cfg.cx;
+    }
+
+    if (editor_cfg.cx >= editor_cfg.col_offset + editor_cfg.screen_cols) {
+        editor_cfg.col_offset = editor_cfg.cx - editor_cfg.screen_cols + 1;
+    }
 }
 
 void editor_refresh_screen() {
@@ -310,8 +322,9 @@ void editor_refresh_screen() {
     editor_draw_rows(&ab);
 
     char buf[32] = {0};
-    unsigned len =
-        snprintf(buf, sizeof(buf), "\x1b[%u;%uH", (editor_cfg.cy - editor_cfg.row_offset), editor_cfg.cx + 1);
+    unsigned len = snprintf(buf, sizeof(buf), "\x1b[%u;%uH",
+                            (editor_cfg.cy - editor_cfg.row_offset + 1),
+                            (editor_cfg.cx - editor_cfg.col_offset + 1));
     abuf_append(&ab, buf, len);
 
     abuf_append(&ab, "\x1b[?25h", 6);
@@ -412,6 +425,7 @@ void editor_init() {
     editor_cfg.cx = 0;
     editor_cfg.cy = 0;
     editor_cfg.row_offset = 0;
+    editor_cfg.col_offset = 0;
     editor_cfg.num_erows = 0;
     editor_cfg.erows = NULL;
 
