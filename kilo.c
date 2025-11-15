@@ -14,10 +14,17 @@
 #define CTRL_KEY(key) (key) & 0x1f
 
 typedef struct {
+    unsigned size;
+    char *chars;
+} editor_row;
+
+typedef struct {
     unsigned cx;
     unsigned cy;
     unsigned screen_rows;
     unsigned screen_cols;
+    unsigned num_erows;
+    editor_row erow;
     struct termios orig_termios;
 } editor_config_t;
 
@@ -234,32 +241,42 @@ void editor_process_keypress() {
 
 void editor_draw_rows(abuf *ab) {
     for (unsigned y = 0; y < editor_cfg.screen_rows; y++) {
-        if (y == editor_cfg.screen_rows / 3) {
-            char welcome[80] = {0};
-            unsigned welcome_len = snprintf(welcome, sizeof(welcome),
-                                            "Kilo Editor -- version %s", KILO_VERSION);
+        if (y >= editor_cfg.num_erows) {
+            if (y == editor_cfg.screen_rows / 3) {
+                char welcome[80] = {0};
+                unsigned welcome_len = snprintf(
+                    welcome, sizeof(welcome), "Kilo Editor -- version %s", KILO_VERSION);
 
-            if (welcome_len > editor_cfg.screen_cols) {
-                welcome_len = editor_cfg.screen_cols;
-            }
+                if (welcome_len > editor_cfg.screen_cols) {
+                    welcome_len = editor_cfg.screen_cols;
+                }
 
-            unsigned padding = (editor_cfg.screen_cols - welcome_len) / 2;
+                unsigned padding = (editor_cfg.screen_cols - welcome_len) / 2;
 
-            if (padding != 0) {
+                if (padding != 0) {
+                    abuf_append(ab, "~", 1);
+                }
+
+                while (padding--) {
+                    abuf_append(ab, " ", 1);
+                }
+
+                abuf_append(ab, welcome, welcome_len);
+
+            } else {
                 abuf_append(ab, "~", 1);
             }
+        } else {
+            unsigned len = editor_cfg.erow.size;
 
-            while (padding--) {
-                abuf_append(ab, " ", 1);
+            if (len > editor_cfg.screen_cols) {
+                len = editor_cfg.screen_cols;
             }
 
-            abuf_append(ab, welcome, welcome_len);
-
-        } else {
-            abuf_append(ab, "~", 1);
+            abuf_append(ab, editor_cfg.erow.chars, len);
         }
 
-        abuf_append(ab, "\x1b[K", 4);
+        abuf_append(ab, "\x1b[K", 3);
         if (y < editor_cfg.screen_rows - 1) {
             abuf_append(ab, "\r\n", 2);
         }
@@ -334,9 +351,21 @@ int get_window_size(unsigned *rows, unsigned *cols) {
     }
 }
 
-void init_editor() {
+void editor_open() {
+    char *line = "Hello, world!";
+    ssize_t line_len = 13;
+
+    editor_cfg.erow.size = line_len;
+    editor_cfg.erow.chars = (char *)calloc(line_len + 1, sizeof(char));
+    memcpy(editor_cfg.erow.chars, line, line_len);
+    editor_cfg.erow.chars[line_len] = '\0';
+    editor_cfg.num_erows = 1;
+}
+
+void editor_init() {
     editor_cfg.cx = 0;
     editor_cfg.cy = 0;
+    editor_cfg.num_erows = 0;
 
     if (get_window_size(&editor_cfg.screen_rows, &editor_cfg.screen_cols) == -1) {
         die("init_editor :: get_window_size");
@@ -345,7 +374,8 @@ void init_editor() {
 
 int main() {
     enable_raw_mode();
-    init_editor();
+    editor_init();
+    editor_open();
 
     while (1) {
         editor_refresh_screen();
