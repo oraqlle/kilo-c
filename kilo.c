@@ -5,9 +5,7 @@
 
 static struct termios orig_termios;
 
-void disable_raw_mode() {
-    tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
-}
+void disable_raw_mode() { tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios); }
 
 void enable_raw_mode() {
     tcgetattr(STDIN_FILENO, &orig_termios);
@@ -23,7 +21,8 @@ int main() {
     enable_raw_mode();
 
     char c = '\0';
-    while(read(STDIN_FILENO, &c, 1) == 1 && c != 'q');
+    while (read(STDIN_FILENO, &c, 1) == 1 && c != 'q')
+        ;
 
     return 0;
 }
