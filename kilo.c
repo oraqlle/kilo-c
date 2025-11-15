@@ -185,6 +185,9 @@ unsigned editor_read_key() {
 }
 
 void editor_move_cursor(unsigned key) {
+    editor_row_t *erow =
+        (editor_cfg.cy >= editor_cfg.num_erows) ? NULL : &editor_cfg.erows[editor_cfg.cy];
+
     switch (key) {
         case ARROW_LEFT:
             if (editor_cfg.cx != 0) {
@@ -192,7 +195,9 @@ void editor_move_cursor(unsigned key) {
             }
             break;
         case ARROW_RIGHT:
-            editor_cfg.cx += 1;
+            if (erow != NULL && editor_cfg.cx < erow->size) {
+                editor_cfg.cx += 1;
+            }
             break;
         case ARROW_UP:
             if (editor_cfg.cy != 0) {
@@ -204,6 +209,14 @@ void editor_move_cursor(unsigned key) {
                 editor_cfg.cy += 1;
             }
             break;
+    }
+
+    erow =
+        (editor_cfg.cy >= editor_cfg.num_erows) ? NULL : &editor_cfg.erows[editor_cfg.cy];
+    unsigned row_len = erow != NULL ? erow->size : 0;
+
+    if (editor_cfg.cx > row_len) {
+        editor_cfg.cx = row_len;
     }
 }
 
