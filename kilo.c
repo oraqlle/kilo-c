@@ -14,6 +14,8 @@
 #define CTRL_KEY(key) (key) & 0x1f
 
 typedef struct {
+    unsigned cx;
+    unsigned cy;
     unsigned screen_rows;
     unsigned screen_cols;
     struct termios orig_termios;
@@ -94,6 +96,23 @@ char editor_read_key() {
     return c;
 }
 
+void editor_move_cursor(char key) {
+    switch (key) {
+        case 'a':
+            editor_cfg.cx -= 1;
+            break;
+        case 'd':
+            editor_cfg.cx += 1;
+            break;
+        case 'w':
+            editor_cfg.cy -= 1;
+            break;
+        case 's':
+            editor_cfg.cy += 1;
+            break;
+    }
+}
+
 void editor_process_keypress() {
     char c = editor_read_key();
 
@@ -102,6 +121,12 @@ void editor_process_keypress() {
             write(STDOUT_FILENO, "\x1b[2J", 4);
             write(STDOUT_FILENO, "\x1b[H", 3);
             exit(0);
+            break;
+        case 'w':
+        case 'a':
+        case 's':
+        case 'd':
+            editor_move_cursor(c);
             break;
     }
 }
@@ -147,7 +172,11 @@ void editor_refresh_screen() {
     abuf_append(&ab, "\x1b[H", 3);
 
     editor_draw_rows(&ab);
-    abuf_append(&ab, "\x1b[H", 3);
+
+    char buf[32] = {0};
+    unsigned len = snprintf(buf, sizeof(buf), "\x1b[%u;%uH", editor_cfg.cy + 1, editor_cfg.cx + 1);
+    abuf_append(&ab, buf, len);
+
     abuf_append(&ab, "\x1b[?25h", 6);
 
     write(STDOUT_FILENO, ab.data, ab.len);
@@ -204,6 +233,9 @@ int get_window_size(unsigned *rows, unsigned *cols) {
 }
 
 void init_editor() {
+    editor_cfg.cx = 0;
+    editor_cfg.cy = 0;
+
     if (get_window_size(&editor_cfg.screen_rows, &editor_cfg.screen_cols) == -1) {
         die("init_editor :: get_window_size");
     }
