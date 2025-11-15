@@ -109,6 +109,7 @@ void editor_draw_rows(abuf *ab) {
     for (unsigned y = 0; y < e_config.screen_rows; y++) {
         abuf_append(ab, "~", 1);
 
+        abuf_append(ab, "\x1b[K", 4);
         if (y < e_config.screen_rows - 1) {
             abuf_append(ab, "\r\n", 2);
         }
@@ -118,11 +119,12 @@ void editor_draw_rows(abuf *ab) {
 void editor_refresh_screen() {
     abuf ab = ABUF_INIT;
 
-    abuf_append(&ab, "\x1b[2J", 4);
+    abuf_append(&ab, "\x1b[?25l", 6);
     abuf_append(&ab, "\x1b[H", 3);
 
     editor_draw_rows(&ab);
     abuf_append(&ab, "\x1b[H", 3);
+    abuf_append(&ab, "\x1b[?25h", 6);
 
     write(STDOUT_FILENO, ab.data, ab.len);
     abuf_free(&ab);
