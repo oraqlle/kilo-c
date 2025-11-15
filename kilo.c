@@ -17,9 +17,9 @@ typedef struct {
     unsigned screen_rows;
     unsigned screen_cols;
     struct termios orig_termios;
-} editor_config;
+} editor_config_t;
 
-static editor_config e_config;
+static editor_config_t editor_cfg;
 
 typedef struct {
     char *data;
@@ -55,19 +55,19 @@ void die(const char *str) {
 }
 
 void disable_raw_mode() {
-    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &e_config.orig_termios) == -1) {
+    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &editor_cfg.orig_termios) == -1) {
         die("disable_raw_mode :: tcsetattr");
     }
 }
 
 void enable_raw_mode() {
-    if (tcgetattr(STDIN_FILENO, &e_config.orig_termios) == -1) {
+    if (tcgetattr(STDIN_FILENO, &editor_cfg.orig_termios) == -1) {
         die("enable_raw_mode :: tcgetattr");
     }
 
     atexit(disable_raw_mode);
 
-    struct termios raw = e_config.orig_termios;
+    struct termios raw = editor_cfg.orig_termios;
     raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
     raw.c_oflag &= ~(OPOST);
     raw.c_cflag |= (CS8);
@@ -107,17 +107,17 @@ void editor_process_keypress() {
 }
 
 void editor_draw_rows(abuf *ab) {
-    for (unsigned y = 0; y < e_config.screen_rows; y++) {
-        if (y == e_config.screen_rows / 3) {
+    for (unsigned y = 0; y < editor_cfg.screen_rows; y++) {
+        if (y == editor_cfg.screen_rows / 3) {
             char welcome[80] = {0};
             unsigned welcome_len = snprintf(welcome, sizeof(welcome),
                                             "Kilo Editor -- version %s", KILO_VERSION);
 
-            if (welcome_len > e_config.screen_cols) {
-                welcome_len = e_config.screen_cols;
+            if (welcome_len > editor_cfg.screen_cols) {
+                welcome_len = editor_cfg.screen_cols;
             }
 
-            unsigned padding = (e_config.screen_cols - welcome_len) / 2;
+            unsigned padding = (editor_cfg.screen_cols - welcome_len) / 2;
 
             if (padding != 0) {
                 abuf_append(ab, "~", 1);
@@ -134,7 +134,7 @@ void editor_draw_rows(abuf *ab) {
         }
 
         abuf_append(ab, "\x1b[K", 4);
-        if (y < e_config.screen_rows - 1) {
+        if (y < editor_cfg.screen_rows - 1) {
             abuf_append(ab, "\r\n", 2);
         }
     }
@@ -204,7 +204,7 @@ int get_window_size(unsigned *rows, unsigned *cols) {
 }
 
 void init_editor() {
-    if (get_window_size(&e_config.screen_rows, &e_config.screen_cols) == -1) {
+    if (get_window_size(&editor_cfg.screen_rows, &editor_cfg.screen_cols) == -1) {
         die("init_editor :: get_window_size");
     }
 }
