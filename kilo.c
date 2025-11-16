@@ -2,7 +2,6 @@
 #define _BSD_SOURCE
 #define _GNU_SOURCE
 
-#include <string.h>
 #include <sys/ioctl.h>
 
 #include <termios.h>
@@ -10,8 +9,11 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <time.h>
 
 #define KILO_VERSION "0.0.1"
 #define KILO_TAB_STOP 8
@@ -36,6 +38,8 @@ typedef struct {
     unsigned num_erows;
     editor_row_t *erows;
     char *filename;
+    char status_msg[80];
+    time_t status_msg_time;
     struct termios orig_termios;
 } editor_config_t;
 
@@ -494,6 +498,21 @@ void editor_draw_statusbar(abuf *ab) {
     }
 
     abuf_append(ab, "\x1b[m", 3);
+    abuf_append(ab, "\r\n", 2);
+}
+
+void editor_draw_msg_bar(abuf *ab) {
+    abuf_append(ab, "\x1b[K", 3);
+
+    unsigned msg_len = strlen(editor_cfg.status_msg);
+
+    if (msg_len > editor_cfg.screen_cols) {
+        msg_len = editor_cfg.screen_cols;
+    }
+
+    if (msg_len > 0 && time(NULL) - editor_cfg.status_msg_time < 5) {
+        abuf_append(ab, editor_cfg.status_msg, msg_len);
+    }
 }
 
 void editor_refresh_screen() {
@@ -506,6 +525,7 @@ void editor_refresh_screen() {
 
     editor_draw_rows(&ab);
     editor_draw_statusbar(&ab);
+    editor_draw_msg_bar(&ab);
 
     char buf[32] = {0};
     unsigned len = snprintf(buf, sizeof(buf), "\x1b[%u;%uH",
@@ -517,6 +537,14 @@ void editor_refresh_screen() {
 
     write(STDOUT_FILENO, ab.data, ab.len);
     abuf_free(&ab);
+}
+
+void editor_set_status_msg(const char *fmt, ...) {
+    va_list vargs;
+    va_start(vargs, fmt);
+    vsnprintf(editor_cfg.status_msg, sizeof(editor_cfg.status_msg), fmt, vargs);
+    va_end(vargs);
+    editor_cfg.status_msg_time = time(NULL);
 }
 
 void editor_open(char *filename) {
@@ -558,12 +586,15 @@ void editor_init() {
     editor_cfg.num_erows = 0;
     editor_cfg.erows = NULL;
     editor_cfg.filename = NULL;
+    editor_cfg.status_msg_time = 0;
+
+    memset(editor_cfg.status_msg, 0, sizeof(editor_cfg.status_msg));
 
     if (get_window_size(&editor_cfg.screen_rows, &editor_cfg.screen_cols) == -1) {
         die("init_editor :: get_window_size");
     }
 
-    editor_cfg.screen_rows -= 1;
+    editor_cfg.screen_rows -= -2;
 }
 
 int main(int argc, char *argv[]) {
@@ -573,6 +604,8 @@ int main(int argc, char *argv[]) {
     if (argc >= 2) {
         editor_open(argv[1]);
     }
+
+    editor_set_status_msg("HELP: Ctrl-Q = quit");
 
     while (1) {
         editor_refresh_screen();
