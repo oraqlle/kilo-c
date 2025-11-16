@@ -467,11 +467,15 @@ void editor_draw_statusbar(abuf *ab) {
     abuf_append(ab, "\x1b[7m", 4);
 
     char status[80] = {0};
+    char rstatus[80] = {0};
 
     unsigned len =
         snprintf(status, sizeof(status), "%.20s - %u lines",
                  editor_cfg.filename != NULL ? editor_cfg.filename : "[No Name]",
                  editor_cfg.num_erows);
+
+    unsigned rlen = snprintf(rstatus, sizeof(rstatus), "%u/%u", editor_cfg.cy + 1,
+                             editor_cfg.num_erows);
 
     if (len > editor_cfg.screen_cols) {
         len = editor_cfg.screen_cols;
@@ -479,8 +483,14 @@ void editor_draw_statusbar(abuf *ab) {
 
     abuf_append(ab, status, len);
 
-    for (; len < editor_cfg.screen_cols; len++) {
-        abuf_append(ab, " ", 1);
+    while (len < editor_cfg.screen_cols) {
+        if (editor_cfg.screen_cols - len == rlen) {
+            abuf_append(ab, rstatus, rlen);
+            break;
+        } else {
+            abuf_append(ab, " ", 1);
+            len += 1;
+        }
     }
 
     abuf_append(ab, "\x1b[m", 3);
