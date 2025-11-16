@@ -14,12 +14,15 @@
 #include <stdlib.h>
 
 #define KILO_VERSION "0.0.1"
+#define KILO_TAB_STOP 8
 
 #define CTRL_KEY(key) (key) & 0x1f
 
 typedef struct {
     unsigned size;
+    unsigned rsize;
     char *chars;
+    char *render;
 } editor_row_t;
 
 typedef struct {
@@ -291,7 +294,7 @@ void editor_draw_rows(abuf *ab) {
                 abuf_append(ab, "~", 1);
             }
         } else {
-            long len = editor_cfg.erows[file_row].size - editor_cfg.col_offset;
+            long len = editor_cfg.erows[file_row].rsize - editor_cfg.col_offset;
 
             if (len < 0) {
                 len = 0;
@@ -301,7 +304,7 @@ void editor_draw_rows(abuf *ab) {
                 len = editor_cfg.screen_cols;
             }
 
-            abuf_append(ab, &editor_cfg.erows[file_row].chars[editor_cfg.col_offset],
+            abuf_append(ab, &editor_cfg.erows[file_row].render[editor_cfg.col_offset],
                         len);
         }
 
@@ -401,6 +404,36 @@ int get_window_size(unsigned *rows, unsigned *cols) {
     }
 }
 
+void editor_update_row(editor_row_t *erow) {
+    unsigned tabs = 0;
+
+    for (unsigned j = 0; j < erow->size; j++) {
+        if (erow->chars[j] == '\t') {
+            tabs += 1;
+        }
+    }
+
+    free(erow->render);
+    erow->render = (char *)calloc(erow->size + tabs * (KILO_TAB_STOP - 1) + 1, sizeof(char));
+
+    unsigned idx = 0;
+
+    for (unsigned j = 0; j < erow->size; j++) {
+        if (erow->chars[j] == '\t') {
+            erow->render[idx++] = ' ';
+
+            while (idx % KILO_TAB_STOP != 0) {
+                erow->render[idx++] = ' ';
+            }
+        } else {
+            erow->render[idx++] = erow->chars[j];
+        }
+    }
+
+    erow->render[idx] = '\0';
+    erow->rsize = idx;
+}
+
 void editor_append_row(char *str, size_t len) {
     editor_cfg.erows = (editor_row_t *)realloc(
         editor_cfg.erows, sizeof(editor_row_t) * (editor_cfg.num_erows + 1));
@@ -410,6 +443,11 @@ void editor_append_row(char *str, size_t len) {
     editor_cfg.erows[at].chars = (char *)calloc(len + 1, sizeof(char));
     memcpy(editor_cfg.erows[at].chars, str, len);
     editor_cfg.erows[at].chars[len] = '\0';
+
+    editor_cfg.erows[at].rsize = 0;
+    editor_cfg.erows[at].render = NULL;
+    editor_update_row(&editor_cfg.erows[at]);
+
     editor_cfg.num_erows += 1;
 }
 
