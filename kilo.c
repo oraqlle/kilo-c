@@ -4,6 +4,7 @@
 
 #include <sys/ioctl.h>
 
+#include <fcntl.h>
 #include <termios.h>
 #include <unistd.h>
 
@@ -46,6 +47,7 @@ typedef struct {
 static editor_config_t editor_cfg;
 
 enum editor_key {
+    BACKSPACE = 127,
     ARROW_UP = 1000,
     ARROW_LEFT,
     ARROW_DOWN,
@@ -403,6 +405,27 @@ void editor_set_status_msg(const char *fmt, ...) {
     editor_cfg.status_msg_time = time(NULL);
 }
 
+char *editor_rows_to_string(size_t *buflen) {
+    size_t total_len = 0;
+
+    for (size_t j = 0; j < editor_cfg.num_erows; j++) {
+        total_len += editor_cfg.erows[j].size + 1;
+    }
+
+    *buflen = total_len;
+    char *buf = (char *)calloc(total_len, sizeof(char));
+    char *ptr = buf;
+
+    for (size_t j = 0; j < editor_cfg.num_erows; j++) {
+        memcpy(ptr, editor_cfg.erows[j].chars, editor_cfg.erows[j].size);
+        ptr += editor_cfg.erows[j].size;
+        *ptr = '\n';
+        ptr++;
+    }
+
+    return buf;
+}
+
 void editor_open(char *filename) {
     free(editor_cfg.filename);
     editor_cfg.filename = strdup(filename);
@@ -431,6 +454,21 @@ void editor_open(char *filename) {
 
     free(line);
     fclose(fp);
+}
+
+void editor_save() {
+    if (editor_cfg.filename == NULL) {
+        return;
+    }
+
+    size_t len = 0;
+    char *buf = editor_rows_to_string(&len);
+
+    int fd = open(editor_cfg.filename, O_RDWR | O_CREAT, 0644);
+    ftruncate(fd, len);
+    write(fd, buf, len);
+    close(fd);
+    free(buf);
 }
 
 unsigned editor_read_key() {
@@ -555,10 +593,17 @@ void editor_process_keypress() {
     unsigned c = editor_read_key();
 
     switch (c) {
+        case '\r':
+            break;
+
         case CTRL_KEY('q'):
             write(STDOUT_FILENO, "\x1b[2J", 4);
             write(STDOUT_FILENO, "\x1b[H", 3);
             exit(0);
+            break;
+
+        case CTRL_KEY('s'):
+            editor_save();
             break;
 
         case HOME_KEY:
@@ -569,6 +614,11 @@ void editor_process_keypress() {
             if (editor_cfg.cy < editor_cfg.num_erows) {
                 editor_cfg.cx = editor_cfg.erows[editor_cfg.cy].size;
             }
+            break;
+
+        case BACKSPACE:
+        case CTRL_KEY('h'):
+        case DEL_KEY:
             break;
 
         case PAGE_UP:
@@ -595,6 +645,10 @@ void editor_process_keypress() {
         case ARROW_DOWN:
         case ARROW_RIGHT:
             editor_move_cursor(c);
+            break;
+
+        case CTRL_KEY('l'):
+        case '\x1b':
             break;
 
         default:
