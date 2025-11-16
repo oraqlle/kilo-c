@@ -245,11 +245,23 @@ void editor_process_keypress() {
             break;
 
         case END_KEY:
-            editor_cfg.cx = editor_cfg.screen_cols - 1;
+            if (editor_cfg.cy < editor_cfg.num_erows) {
+                editor_cfg.cx = editor_cfg.erows[editor_cfg.cy].size;
+            }
             break;
 
         case PAGE_UP:
         case PAGE_DOWN: {
+            if (c == PAGE_UP) {
+                editor_cfg.cy = editor_cfg.row_offset;
+            } else if (c == PAGE_DOWN) {
+                editor_cfg.cy = editor_cfg.row_offset + editor_cfg.screen_rows - 1;
+
+                if (editor_cfg.cy > editor_cfg.num_erows) {
+                    editor_cfg.cy = editor_cfg.num_erows;
+                }
+            }
+
             unsigned times = editor_cfg.screen_rows;
             while (times--) {
                 editor_move_cursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
