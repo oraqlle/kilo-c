@@ -28,6 +28,7 @@ typedef struct {
 typedef struct {
     unsigned cx;
     unsigned cy;
+    unsigned rx;
     unsigned row_offset;
     unsigned col_offset;
     unsigned screen_rows;
@@ -265,6 +266,117 @@ void editor_process_keypress() {
     }
 }
 
+int get_cursor_position(unsigned *rows, unsigned *cols) {
+    char buf[32] = {0};
+    unsigned i = 0;
+
+    if (write(STDOUT_FILENO, "\x1b[6n", 4) != 4) {
+        return -1;
+    }
+
+    while (i < sizeof(buf) - 1) {
+        if (read(STDIN_FILENO, &buf[i], 1) != 1) {
+            break;
+        }
+
+        if (buf[i] == 'R') {
+            break;
+        }
+
+        i += 1;
+    }
+
+    buf[i] = '\0';
+
+    if (buf[0] != '\x1b' || buf[1] != '[') {
+        return -1;
+    }
+
+    if (sscanf(&buf[2], "%u;%u", rows, cols) != 2) {
+        return -1;
+    }
+
+    return 0;
+}
+
+int get_window_size(unsigned *rows, unsigned *cols) {
+    struct winsize ws;
+
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
+        if (write(STDOUT_FILENO, "\x1b[999C\x1b[999B", 12) != 12) {
+            return -1;
+        }
+
+        return get_cursor_position(rows, cols);
+    } else {
+        *rows = ws.ws_row;
+        *cols = ws.ws_col;
+        return 0;
+    }
+}
+
+unsigned editor_row_cx_to_rx(editor_row_t *erow, unsigned cx) {
+    unsigned rx = 0;
+
+    for (unsigned j = 0; j < cx; j++) {
+        if (erow->chars[j] == '\t') {
+            rx += (KILO_TAB_STOP - 1) - (rx % KILO_TAB_STOP);
+        }
+
+        rx += 1;
+    }
+
+    return rx;
+}
+
+void editor_update_row(editor_row_t *erow) {
+    unsigned tabs = 0;
+
+    for (unsigned j = 0; j < erow->size; j++) {
+        if (erow->chars[j] == '\t') {
+            tabs += 1;
+        }
+    }
+
+    free(erow->render);
+    erow->render =
+        (char *)calloc(erow->size + tabs * (KILO_TAB_STOP - 1) + 1, sizeof(char));
+
+    unsigned idx = 0;
+
+    for (unsigned j = 0; j < erow->size; j++) {
+        if (erow->chars[j] == '\t') {
+            erow->render[idx++] = ' ';
+
+            while (idx % KILO_TAB_STOP != 0) {
+                erow->render[idx++] = ' ';
+            }
+        } else {
+            erow->render[idx++] = erow->chars[j];
+        }
+    }
+
+    erow->render[idx] = '\0';
+    erow->rsize = idx;
+}
+
+void editor_append_row(char *str, size_t len) {
+    editor_cfg.erows = (editor_row_t *)realloc(
+        editor_cfg.erows, sizeof(editor_row_t) * (editor_cfg.num_erows + 1));
+
+    unsigned at = editor_cfg.num_erows;
+    editor_cfg.erows[at].size = len;
+    editor_cfg.erows[at].chars = (char *)calloc(len + 1, sizeof(char));
+    memcpy(editor_cfg.erows[at].chars, str, len);
+    editor_cfg.erows[at].chars[len] = '\0';
+
+    editor_cfg.erows[at].rsize = 0;
+    editor_cfg.erows[at].render = NULL;
+    editor_update_row(&editor_cfg.erows[at]);
+
+    editor_cfg.num_erows += 1;
+}
+
 void editor_draw_rows(abuf *ab) {
     for (unsigned y = 0; y < editor_cfg.screen_rows; y++) {
         unsigned file_row = y + editor_cfg.row_offset;
@@ -316,6 +428,13 @@ void editor_draw_rows(abuf *ab) {
 }
 
 void editor_scroll() {
+    editor_cfg.rx = 0;
+
+    if (editor_cfg.cy < editor_cfg.num_erows) {
+        editor_cfg.rx =
+            editor_row_cx_to_rx(&editor_cfg.erows[editor_cfg.cy], editor_cfg.cx);
+    }
+
     if (editor_cfg.cy < editor_cfg.row_offset) {
         editor_cfg.row_offset = editor_cfg.cy;
     }
@@ -324,12 +443,12 @@ void editor_scroll() {
         editor_cfg.row_offset = editor_cfg.cy - editor_cfg.screen_rows + 1;
     }
 
-    if (editor_cfg.cx < editor_cfg.col_offset) {
-        editor_cfg.col_offset = editor_cfg.cx;
+    if (editor_cfg.rx < editor_cfg.col_offset) {
+        editor_cfg.col_offset = editor_cfg.rx;
     }
 
-    if (editor_cfg.cx >= editor_cfg.col_offset + editor_cfg.screen_cols) {
-        editor_cfg.col_offset = editor_cfg.cx - editor_cfg.screen_cols + 1;
+    if (editor_cfg.rx >= editor_cfg.col_offset + editor_cfg.screen_cols) {
+        editor_cfg.col_offset = editor_cfg.rx - editor_cfg.screen_cols + 1;
     }
 }
 
@@ -346,109 +465,13 @@ void editor_refresh_screen() {
     char buf[32] = {0};
     unsigned len = snprintf(buf, sizeof(buf), "\x1b[%u;%uH",
                             (editor_cfg.cy - editor_cfg.row_offset + 1),
-                            (editor_cfg.cx - editor_cfg.col_offset + 1));
+                            (editor_cfg.rx - editor_cfg.col_offset + 1));
     abuf_append(&ab, buf, len);
 
     abuf_append(&ab, "\x1b[?25h", 6);
 
     write(STDOUT_FILENO, ab.data, ab.len);
     abuf_free(&ab);
-}
-
-int get_cursor_position(unsigned *rows, unsigned *cols) {
-    char buf[32] = {0};
-    unsigned i = 0;
-
-    if (write(STDOUT_FILENO, "\x1b[6n", 4) != 4) {
-        return -1;
-    }
-
-    while (i < sizeof(buf) - 1) {
-        if (read(STDIN_FILENO, &buf[i], 1) != 1) {
-            break;
-        }
-
-        if (buf[i] == 'R') {
-            break;
-        }
-
-        i += 1;
-    }
-
-    buf[i] = '\0';
-
-    if (buf[0] != '\x1b' || buf[1] != '[') {
-        return -1;
-    }
-
-    if (sscanf(&buf[2], "%u;%u", rows, cols) != 2) {
-        return -1;
-    }
-
-    return 0;
-}
-
-int get_window_size(unsigned *rows, unsigned *cols) {
-    struct winsize ws;
-
-    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
-        if (write(STDOUT_FILENO, "\x1b[999C\x1b[999B", 12) != 12) {
-            return -1;
-        }
-
-        return get_cursor_position(rows, cols);
-    } else {
-        *rows = ws.ws_row;
-        *cols = ws.ws_col;
-        return 0;
-    }
-}
-
-void editor_update_row(editor_row_t *erow) {
-    unsigned tabs = 0;
-
-    for (unsigned j = 0; j < erow->size; j++) {
-        if (erow->chars[j] == '\t') {
-            tabs += 1;
-        }
-    }
-
-    free(erow->render);
-    erow->render = (char *)calloc(erow->size + tabs * (KILO_TAB_STOP - 1) + 1, sizeof(char));
-
-    unsigned idx = 0;
-
-    for (unsigned j = 0; j < erow->size; j++) {
-        if (erow->chars[j] == '\t') {
-            erow->render[idx++] = ' ';
-
-            while (idx % KILO_TAB_STOP != 0) {
-                erow->render[idx++] = ' ';
-            }
-        } else {
-            erow->render[idx++] = erow->chars[j];
-        }
-    }
-
-    erow->render[idx] = '\0';
-    erow->rsize = idx;
-}
-
-void editor_append_row(char *str, size_t len) {
-    editor_cfg.erows = (editor_row_t *)realloc(
-        editor_cfg.erows, sizeof(editor_row_t) * (editor_cfg.num_erows + 1));
-
-    unsigned at = editor_cfg.num_erows;
-    editor_cfg.erows[at].size = len;
-    editor_cfg.erows[at].chars = (char *)calloc(len + 1, sizeof(char));
-    memcpy(editor_cfg.erows[at].chars, str, len);
-    editor_cfg.erows[at].chars[len] = '\0';
-
-    editor_cfg.erows[at].rsize = 0;
-    editor_cfg.erows[at].render = NULL;
-    editor_update_row(&editor_cfg.erows[at]);
-
-    editor_cfg.num_erows += 1;
 }
 
 void editor_open(char *filename) {
@@ -481,6 +504,7 @@ void editor_open(char *filename) {
 void editor_init() {
     editor_cfg.cx = 0;
     editor_cfg.cy = 0;
+    editor_cfg.rx = 0;
     editor_cfg.row_offset = 0;
     editor_cfg.col_offset = 0;
     editor_cfg.num_erows = 0;
