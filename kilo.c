@@ -668,7 +668,11 @@ char *editor_prompt(char *prompt) {
 
         unsigned chr = editor_read_key();
 
-        if (chr == '\x1b') {
+        if (chr == DEL_KEY || chr == (CTRL_KEY('h')) || chr == BACKSPACE) {
+            if (buflen != 0) {
+                buf[--buflen] = '\0';
+            }
+        } else if (chr == '\x1b') {
             editor_set_status_msg("");
             free(buf);
             return NULL;
