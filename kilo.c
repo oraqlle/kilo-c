@@ -465,10 +465,21 @@ void editor_save() {
     char *buf = editor_rows_to_string(&len);
 
     int fd = open(editor_cfg.filename, O_RDWR | O_CREAT, 0644);
-    ftruncate(fd, len);
-    write(fd, buf, len);
-    close(fd);
+    if (fd != -1) {
+        if (ftruncate(fd, len) != -1) {
+            if ((size_t)write(fd, buf, len) == len) {
+                close(fd);
+                free(buf);
+                editor_set_status_msg("%zu bytes written to disk", len);
+                return;
+            }
+        }
+
+        close(fd);
+    }
+
     free(buf);
+    editor_set_status_msg("Can't save! I/O error: %s", strerror(errno));
 }
 
 unsigned editor_read_key() {
@@ -685,7 +696,7 @@ int main(int argc, char *argv[]) {
         editor_open(argv[1]);
     }
 
-    editor_set_status_msg("HELP: Ctrl-Q = quit");
+    editor_set_status_msg("HELP: Ctrl-S = save | Ctrl-Q = quit");
 
     while (1) {
         editor_refresh_screen();
