@@ -185,6 +185,25 @@ unsigned editor_row_cx_to_rx(editor_row_t *erow, unsigned cx) {
     return rx;
 }
 
+unsigned editor_row_rx_to_cx(editor_row_t *erow, unsigned rx) {
+    unsigned cur_rx = 0;
+    unsigned cx = 0;
+
+    for (; cx < erow->size; cx++) {
+        if (erow->chars[cx] == '\t') {
+            cur_rx += (KILO_TAB_STOP - 1) - (cur_rx % KILO_TAB_STOP);
+        }
+
+        cur_rx += 1;
+
+        if (cur_rx > rx) {
+            return cx;
+        }
+    }
+
+    return cx;
+}
+
 void editor_update_row(editor_row_t *erow) {
     unsigned tabs = 0;
 
@@ -579,6 +598,28 @@ void editor_save() {
     editor_set_status_msg("Can't save! I/O error: %s", strerror(errno));
 }
 
+void editor_find() {
+    char *query = editor_prompt("Search: %s (ESC to cancel)");
+
+    if (query == NULL) {
+        return;
+    }
+
+    for (unsigned i = 0; i < editor_cfg.num_erows; i++) {
+        editor_row_t *erow = &editor_cfg.erows[i];
+        char *match = strstr(erow->render, query);
+
+        if (match != NULL) {
+            editor_cfg.cy = i;
+            editor_cfg.cx = editor_row_rx_to_cx(erow, match - erow->render);
+            editor_cfg.row_offset = editor_cfg.num_erows;
+            break;
+        }
+    }
+
+    free(query);
+}
+
 unsigned editor_read_key() {
     int nread = 0;
     char c = '\0';
@@ -773,6 +814,10 @@ void editor_process_keypress() {
             }
             break;
 
+        case CTRL_KEY('f'):
+            editor_find();
+            break;
+
         case DEL_KEY:
             editor_move_cursor(ARROW_RIGHT);
             // fallthrough
@@ -848,7 +893,7 @@ int main(int argc, char *argv[]) {
         editor_open(argv[1]);
     }
 
-    editor_set_status_msg("HELP: Ctrl-S = save | Ctrl-Q = quit");
+    editor_set_status_msg("HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find");
 
     while (1) {
         editor_refresh_screen();
