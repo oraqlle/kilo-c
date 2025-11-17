@@ -617,10 +617,20 @@ void editor_find_callback(char *query, unsigned key) {
 }
 
 void editor_find() {
+    unsigned saved_cx = editor_cfg.cx;
+    unsigned saved_cy = editor_cfg.cy;
+    unsigned saved_col_offset = editor_cfg.col_offset;
+    unsigned saved_row_offset = editor_cfg.row_offset;
+
     char *query = editor_prompt("Search: %s (ESC to cancel)", editor_find_callback);
 
     if (query != NULL) {
         free(query);
+    } else {
+        editor_cfg.cx = saved_cx;
+        editor_cfg.cy = saved_cy;
+        editor_cfg.col_offset = saved_col_offset;
+        editor_cfg.row_offset = saved_row_offset;
     }
 }
 
