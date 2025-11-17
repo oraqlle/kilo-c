@@ -8,6 +8,7 @@
 #include <termios.h>
 #include <unistd.h>
 
+#include <ctype.h>
 #include <errno.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -543,9 +544,17 @@ void editor_open(char *filename) {
     editor_cfg.dirty = false;
 }
 
+// Forward declare editor_prompt()
+char *editor_prompt(char *prompt);
+
 void editor_save() {
     if (editor_cfg.filename == NULL) {
-        return;
+        editor_cfg.filename = editor_prompt("Save as: %s (ESC to cancel)");
+
+        if (editor_cfg.filename == NULL) {
+            editor_set_status_msg("Saved aborted");
+            return;
+        }
     }
 
     size_t len = 0;
@@ -643,6 +652,40 @@ unsigned editor_read_key() {
         return '\x1b';
     } else {
         return c;
+    }
+}
+
+char *editor_prompt(char *prompt) {
+    size_t bufsize = 128;
+    char *buf = (char *)calloc(bufsize, sizeof(char));
+
+    size_t buflen = 0;
+    buf[0] = '\0';
+
+    while (true) {
+        editor_set_status_msg(prompt, buf);
+        editor_refresh_screen();
+
+        unsigned chr = editor_read_key();
+
+        if (chr == '\x1b') {
+            editor_set_status_msg("");
+            free(buf);
+            return NULL;
+        } else if (chr == '\r') {
+            if (buflen != 0) {
+                editor_set_status_msg("");
+                return buf;
+            }
+        } else if (!iscntrl(chr) && chr < 128) {
+            if (buflen == bufsize - 1) {
+                bufsize *= 2;
+                buf = (char *)realloc(buf, bufsize);
+            }
+
+            buf[buflen++] = chr;
+            buf[buflen] = '\0';
+        }
     }
 }
 
