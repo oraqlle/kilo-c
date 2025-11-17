@@ -233,6 +233,23 @@ void editor_append_row(char *str, size_t len) {
     editor_cfg.dirty = true;
 }
 
+void editor_free_row(editor_row_t *erow) {
+    free(erow->render);
+    free(erow->chars);
+}
+
+void editor_del_row(unsigned at) {
+    if (at >= editor_cfg.num_erows) {
+        return;
+    }
+
+    editor_free_row(&editor_cfg.erows[at]);
+    memmove(&editor_cfg.erows[at], &editor_cfg.erows[at + 1],
+            sizeof(editor_row_t) * (editor_cfg.num_erows - at - 1));
+    editor_cfg.num_erows -= 1;
+    editor_cfg.dirty = true;
+}
+
 void editor_row_insert_char(editor_row_t *erow, unsigned at, unsigned chr) {
     if (at < 0 || at > erow->size) {
         at = erow->size;
@@ -247,13 +264,13 @@ void editor_row_insert_char(editor_row_t *erow, unsigned at, unsigned chr) {
     editor_cfg.dirty = true;
 }
 
-void editor_insert_char(unsigned chr) {
-    if (editor_cfg.cy == editor_cfg.num_erows) {
-        editor_append_row("", 0);
-    }
-
-    editor_row_insert_char(&editor_cfg.erows[editor_cfg.cy], editor_cfg.cx, chr);
-    editor_cfg.cx += 1;
+void editor_row_append_string(editor_row_t *erow, char *str, size_t len) {
+    erow->chars = (char *)realloc(erow->chars, erow->size + len + 1);
+    memcpy(&erow->chars[erow->size], str, len);
+    erow->size += len;
+    erow->chars[erow->size] = '\0';
+    editor_update_row(erow);
+    editor_cfg.dirty = true;
 }
 
 void editor_row_del_char(editor_row_t *erow, unsigned at) {
@@ -265,19 +282,6 @@ void editor_row_del_char(editor_row_t *erow, unsigned at) {
     erow->size -= 1;
     editor_update_row(erow);
     editor_cfg.dirty = true;
-}
-
-void editor_del_char() {
-    if (editor_cfg.cy == editor_cfg.num_erows) {
-        return;
-    }
-
-    editor_row_t *erow = &editor_cfg.erows[editor_cfg.cy];
-
-    if (editor_cfg.cx > 0) {
-        editor_row_del_char(erow, editor_cfg.cx - 1);
-        editor_cfg.cx -= 1;
-    }
 }
 
 void editor_draw_rows(abuf *ab) {
@@ -452,6 +456,38 @@ char *editor_rows_to_string(size_t *buflen) {
     }
 
     return buf;
+}
+
+void editor_insert_char(unsigned chr) {
+    if (editor_cfg.cy == editor_cfg.num_erows) {
+        editor_append_row("", 0);
+    }
+
+    editor_row_insert_char(&editor_cfg.erows[editor_cfg.cy], editor_cfg.cx, chr);
+    editor_cfg.cx += 1;
+}
+
+void editor_del_char() {
+    if (editor_cfg.cy == editor_cfg.num_erows) {
+        return;
+    }
+
+    if (editor_cfg.cx == 0 && editor_cfg.cy == 0) {
+        return;
+    }
+
+    editor_row_t *erow = &editor_cfg.erows[editor_cfg.cy];
+
+    if (editor_cfg.cx > 0) {
+        editor_row_del_char(erow, editor_cfg.cx - 1);
+        editor_cfg.cx -= 1;
+    } else {
+        editor_cfg.cx = editor_cfg.erows[editor_cfg.cy - 1].size;
+        editor_row_append_string(&editor_cfg.erows[editor_cfg.cy - 1], erow->chars,
+                                 erow->size);
+        editor_del_row(editor_cfg.cy);
+        editor_cfg.cy -= 1;
+    }
 }
 
 void editor_open(char *filename) {
