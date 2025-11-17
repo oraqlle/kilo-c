@@ -564,11 +564,11 @@ void editor_open(char *filename) {
 }
 
 // Forward declare editor_prompt()
-char *editor_prompt(char *prompt);
+char *editor_prompt(char *prompt, void (*callback)(char *, unsigned));
 
 void editor_save() {
     if (editor_cfg.filename == NULL) {
-        editor_cfg.filename = editor_prompt("Save as: %s (ESC to cancel)");
+        editor_cfg.filename = editor_prompt("Save as: %s (ESC to cancel)", NULL);
 
         if (editor_cfg.filename == NULL) {
             editor_set_status_msg("Saved aborted");
@@ -598,10 +598,8 @@ void editor_save() {
     editor_set_status_msg("Can't save! I/O error: %s", strerror(errno));
 }
 
-void editor_find() {
-    char *query = editor_prompt("Search: %s (ESC to cancel)");
-
-    if (query == NULL) {
+void editor_find_callback(char *query, unsigned key) {
+    if (key == '\r' || key == '\x1b') {
         return;
     }
 
@@ -616,8 +614,14 @@ void editor_find() {
             break;
         }
     }
+}
 
-    free(query);
+void editor_find() {
+    char *query = editor_prompt("Search: %s (ESC to cancel)", editor_find_callback);
+
+    if (query != NULL) {
+        free(query);
+    }
 }
 
 unsigned editor_read_key() {
@@ -696,7 +700,7 @@ unsigned editor_read_key() {
     }
 }
 
-char *editor_prompt(char *prompt) {
+char *editor_prompt(char *prompt, void (*callback)(char *, unsigned)) {
     size_t bufsize = 128;
     char *buf = (char *)calloc(bufsize, sizeof(char));
 
@@ -715,11 +719,21 @@ char *editor_prompt(char *prompt) {
             }
         } else if (chr == '\x1b') {
             editor_set_status_msg("");
+
+            if (callback != NULL) {
+                callback(buf, chr);
+            }
+
             free(buf);
             return NULL;
         } else if (chr == '\r') {
             if (buflen != 0) {
                 editor_set_status_msg("");
+
+                if (callback != NULL) {
+                    callback(buf, chr);
+                }
+
                 return buf;
             }
         } else if (!iscntrl(chr) && chr < 128) {
@@ -730,6 +744,10 @@ char *editor_prompt(char *prompt) {
 
             buf[buflen++] = chr;
             buf[buflen] = '\0';
+        }
+
+        if (callback != NULL) {
+            callback(buf, chr);
         }
     }
 }
