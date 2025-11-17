@@ -8,9 +8,9 @@
 #include <termios.h>
 #include <unistd.h>
 
-#include <ctype.h>
 #include <errno.h>
 #include <stdarg.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -38,6 +38,7 @@ typedef struct {
     unsigned screen_cols;
     unsigned num_erows;
     editor_row_t *erows;
+    bool dirty;
     char *filename;
     char status_msg[80];
     time_t status_msg_time;
@@ -228,6 +229,7 @@ void editor_append_row(char *str, size_t len) {
     editor_update_row(&editor_cfg.erows[at]);
 
     editor_cfg.num_erows += 1;
+    editor_cfg.dirty = true;
 }
 
 void editor_row_insert_char(editor_row_t *erow, unsigned at, unsigned chr) {
@@ -241,6 +243,7 @@ void editor_row_insert_char(editor_row_t *erow, unsigned at, unsigned chr) {
     erow->chars[at] = chr;
 
     editor_update_row(erow);
+    editor_cfg.dirty = true;
 }
 
 void editor_insert_char(unsigned chr) {
@@ -332,9 +335,9 @@ void editor_draw_statusbar(abuf *ab) {
     char rstatus[80] = {0};
 
     unsigned len =
-        snprintf(status, sizeof(status), "%.20s - %u lines",
+        snprintf(status, sizeof(status), "%.20s - %u lines %s",
                  editor_cfg.filename != NULL ? editor_cfg.filename : "[No Name]",
-                 editor_cfg.num_erows);
+                 editor_cfg.num_erows, editor_cfg.dirty ? "(modified)" : "");
 
     unsigned rlen = snprintf(rstatus, sizeof(rstatus), "%u/%u", editor_cfg.cy + 1,
                              editor_cfg.num_erows);
@@ -454,6 +457,7 @@ void editor_open(char *filename) {
 
     free(line);
     fclose(fp);
+    editor_cfg.dirty = false;
 }
 
 void editor_save() {
@@ -470,6 +474,7 @@ void editor_save() {
             if ((size_t)write(fd, buf, len) == len) {
                 close(fd);
                 free(buf);
+                editor_cfg.dirty = false;
                 editor_set_status_msg("%zu bytes written to disk", len);
                 return;
             }
@@ -676,6 +681,7 @@ void editor_init() {
     editor_cfg.col_offset = 0;
     editor_cfg.num_erows = 0;
     editor_cfg.erows = NULL;
+    editor_cfg.dirty = false;
     editor_cfg.filename = NULL;
     editor_cfg.status_msg_time = 0;
 
