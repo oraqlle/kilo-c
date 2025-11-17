@@ -256,6 +256,30 @@ void editor_insert_char(unsigned chr) {
     editor_cfg.cx += 1;
 }
 
+void editor_row_del_char(editor_row_t *erow, unsigned at) {
+    if (at >= erow->size) {
+        return;
+    }
+
+    memmove(&erow->chars[at], &erow->chars[at + 1], erow->size - at);
+    erow->size -= 1;
+    editor_update_row(erow);
+    editor_cfg.dirty = true;
+}
+
+void editor_del_char() {
+    if (editor_cfg.cy == editor_cfg.num_erows) {
+        return;
+    }
+
+    editor_row_t *erow = &editor_cfg.erows[editor_cfg.cy];
+
+    if (editor_cfg.cx > 0) {
+        editor_row_del_char(erow, editor_cfg.cx - 1);
+        editor_cfg.cx -= 1;
+    }
+}
+
 void editor_draw_rows(abuf *ab) {
     for (unsigned y = 0; y < editor_cfg.screen_rows; y++) {
         unsigned file_row = y + editor_cfg.row_offset;
@@ -643,9 +667,12 @@ void editor_process_keypress() {
             }
             break;
 
+        case DEL_KEY:
+            editor_move_cursor(ARROW_RIGHT);
+            // fallthrough
         case BACKSPACE:
         case CTRL_KEY('h'):
-        case DEL_KEY:
+            editor_del_char();
             break;
 
         case PAGE_UP:
