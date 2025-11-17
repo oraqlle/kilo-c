@@ -599,16 +599,44 @@ void editor_save() {
 }
 
 void editor_find_callback(char *query, unsigned key) {
+    static long last_match = -1;
+    static short direction = 1;
+
     if (key == '\r' || key == '\x1b') {
+        last_match = -1;
+        direction = 1;
+
         return;
+    } else if (key == ARROW_RIGHT || key == ARROW_DOWN) {
+        direction = 1;
+    } else if (key == ARROW_LEFT || key == ARROW_UP) {
+        direction = -1;
+    } else {
+        last_match = -1;
+        direction = 1;
     }
 
+    if (last_match == -1) {
+        direction = 1;
+    }
+
+    long current = last_match;
+
     for (unsigned i = 0; i < editor_cfg.num_erows; i++) {
-        editor_row_t *erow = &editor_cfg.erows[i];
+        current += direction;
+
+        if (current == -1) {
+            current = editor_cfg.num_erows - 1;
+        } else if (current == editor_cfg.num_erows) {
+            current = 0;
+        }
+
+        editor_row_t *erow = &editor_cfg.erows[current];
         char *match = strstr(erow->render, query);
 
         if (match != NULL) {
-            editor_cfg.cy = i;
+            last_match = current;
+            editor_cfg.cy = current;
             editor_cfg.cx = editor_row_rx_to_cx(erow, match - erow->render);
             editor_cfg.row_offset = editor_cfg.num_erows;
             break;
@@ -622,7 +650,8 @@ void editor_find() {
     unsigned saved_col_offset = editor_cfg.col_offset;
     unsigned saved_row_offset = editor_cfg.row_offset;
 
-    char *query = editor_prompt("Search: %s (ESC to cancel)", editor_find_callback);
+    char *query =
+        editor_prompt("Search: %s (Use ESC/Arrows/Enter)", editor_find_callback);
 
     if (query != NULL) {
         free(query);
