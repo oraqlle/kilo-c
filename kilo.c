@@ -215,11 +215,16 @@ void editor_update_row(editor_row_t *erow) {
     erow->rsize = idx;
 }
 
-void editor_append_row(char *str, size_t len) {
+void editor_insert_row(unsigned at, char *str, size_t len) {
+    if (at > editor_cfg.num_erows) {
+        return;
+    }
+
     editor_cfg.erows = (editor_row_t *)realloc(
         editor_cfg.erows, sizeof(editor_row_t) * (editor_cfg.num_erows + 1));
+    memmove(&editor_cfg.erows[at + 1], &editor_cfg.erows[at],
+            sizeof(editor_row_t) * (editor_cfg.num_erows - at));
 
-    unsigned at = editor_cfg.num_erows;
     editor_cfg.erows[at].size = len;
     editor_cfg.erows[at].chars = (char *)calloc(len + 1, sizeof(char));
     memcpy(editor_cfg.erows[at].chars, str, len);
@@ -460,11 +465,28 @@ char *editor_rows_to_string(size_t *buflen) {
 
 void editor_insert_char(unsigned chr) {
     if (editor_cfg.cy == editor_cfg.num_erows) {
-        editor_append_row("", 0);
+        editor_insert_row(editor_cfg.num_erows, "", 0);
     }
 
     editor_row_insert_char(&editor_cfg.erows[editor_cfg.cy], editor_cfg.cx, chr);
     editor_cfg.cx += 1;
+}
+
+void editor_insert_newline() {
+    if (editor_cfg.cx == 0) {
+        editor_insert_row(editor_cfg.cy, "", 0);
+    } else {
+        editor_row_t *erow = &editor_cfg.erows[editor_cfg.cy];
+        editor_insert_row(editor_cfg.cy + 1, &erow->chars[editor_cfg.cx],
+                          erow->size - editor_cfg.cx);
+        erow = &editor_cfg.erows[editor_cfg.cy];
+        erow->size = editor_cfg.cx;
+        erow->chars[erow->size] = '\0';
+        editor_update_row(erow);
+    }
+
+    editor_cfg.cy += 1;
+    editor_cfg.cx = 0;
 }
 
 void editor_del_char() {
@@ -512,7 +534,7 @@ void editor_open(char *filename) {
                 line_len -= 1;
             }
 
-            editor_append_row(line, line_len);
+            editor_insert_row(editor_cfg.num_erows, line, line_len);
         }
     }
 
@@ -673,6 +695,7 @@ void editor_process_keypress() {
 
     switch (c) {
         case '\r':
+            editor_insert_newline();
             break;
 
         case CTRL_KEY('q'):
