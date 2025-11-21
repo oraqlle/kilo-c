@@ -178,14 +178,31 @@ int get_window_size(unsigned *rows, unsigned *cols) {
     }
 }
 
+bool is_seperator(char chr) {
+    return isspace(chr) || chr == '\0' || strchr(",.()+-/*=~%<>[]", chr) != NULL;
+}
+
 void editor_update_highlight(editor_row_t *erow) {
     erow->highlight = (unsigned char *)realloc(erow->highlight, erow->rsize);
     memset(erow->highlight, HL_NORMAL, erow->rsize);
 
-    for (unsigned i = 0; i < erow->rsize; i++) {
-        if (isdigit(erow->render[i])) {
+    bool prev_sep = true;
+
+    unsigned i = 0;
+    while (i < erow->rsize) {
+        char chr = erow->render[i];
+        unsigned char prev_hl = (i > 0) ? erow->highlight[i - 1] : HL_NORMAL;
+
+        if ((isdigit(chr) && (prev_sep || prev_hl == HL_NUMBER)) ||
+            (chr == '.' && prev_hl == HL_NUMBER)) {
             erow->highlight[i] = HL_NUMBER;
+            i += 1;
+            prev_sep = false;
+            continue;
         }
+
+        prev_sep = is_seperator(chr);
+        i += 1;
     }
 }
 
