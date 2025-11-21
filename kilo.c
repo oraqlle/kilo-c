@@ -246,6 +246,38 @@ int editor_highlight_to_colour(int hl) {
     }
 }
 
+void editor_select_syntax() {
+    editor_cfg.syntax = NULL;
+
+    if (editor_cfg.filename == NULL) {
+        return;
+    }
+
+    char *ext = strrchr(editor_cfg.filename, '.');
+
+    for (unsigned j = 0; j < HLDB_ENTRIES; j++) {
+        editor_syntax *syntax = &HLDB[j];
+
+        unsigned i = 0;
+        while (syntax->filematch[i] != NULL) {
+            bool is_ext = syntax->filematch[i][0] == '.';
+
+            if ((is_ext && ext != NULL && strcmp(ext, syntax->filematch[i]) == 0) ||
+                (!is_ext && strstr(editor_cfg.filename, syntax->filematch[i]))) {
+                editor_cfg.syntax = syntax;
+
+                for(unsigned filerow = 0; filerow < editor_cfg.num_erows; filerow++) {
+                    editor_update_highlight(&editor_cfg.erows[filerow]);
+                }
+
+                return;
+            }
+
+            i += 1;
+        }
+    }
+}
+
 unsigned editor_row_cx_to_rx(editor_row_t *erow, unsigned cx) {
     unsigned rx = 0;
 
@@ -644,6 +676,8 @@ void editor_open(char *filename) {
     free(editor_cfg.filename);
     editor_cfg.filename = strdup(filename);
 
+    editor_select_syntax();
+
     FILE *fp = fopen(filename, "r");
 
     if (fp == NULL) {
@@ -682,6 +716,8 @@ void editor_save() {
             editor_set_status_msg("Saved aborted");
             return;
         }
+
+        editor_select_syntax();
     }
 
     size_t len = 0;
