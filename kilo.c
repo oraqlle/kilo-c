@@ -23,11 +23,30 @@
 
 #define CTRL_KEY(key) (key) & 0x1f
 
+enum editor_key {
+    BACKSPACE = 127,
+    ARROW_UP = 1000,
+    ARROW_LEFT,
+    ARROW_DOWN,
+    ARROW_RIGHT,
+    DEL_KEY,
+    HOME_KEY,
+    END_KEY,
+    PAGE_UP,
+    PAGE_DOWN
+};
+
+enum editor_highlight {
+    HL_NORMAL = 0,
+    HL_NUMBER,
+};
+
 typedef struct {
     unsigned size;
     unsigned rsize;
     char *chars;
     char *render;
+    unsigned char *highlight;
 } editor_row_t;
 
 typedef struct {
@@ -48,19 +67,6 @@ typedef struct {
 } editor_config_t;
 
 static editor_config_t editor_cfg;
-
-enum editor_key {
-    BACKSPACE = 127,
-    ARROW_UP = 1000,
-    ARROW_LEFT,
-    ARROW_DOWN,
-    ARROW_RIGHT,
-    DEL_KEY,
-    HOME_KEY,
-    END_KEY,
-    PAGE_UP,
-    PAGE_DOWN
-};
 
 typedef struct {
     char *data;
@@ -171,6 +177,26 @@ int get_window_size(unsigned *rows, unsigned *cols) {
     }
 }
 
+void editor_update_highlight(editor_row_t *erow) {
+    erow->highlight = (unsigned char *)realloc(erow->highlight, erow->rsize);
+    memset(erow->highlight, HL_NORMAL, erow->rsize);
+
+    for (unsigned i = 0; i < erow->rsize; i++) {
+        if (isdigit(erow->render[i])) {
+            erow->highlight[i] = HL_NUMBER;
+        }
+    }
+}
+
+int editor_highlight_to_colour(int hl) {
+    switch (hl) {
+        case HL_NUMBER:
+            return 31;
+        default:
+            return 37;
+    }
+}
+
 unsigned editor_row_cx_to_rx(editor_row_t *erow, unsigned cx) {
     unsigned rx = 0;
 
@@ -233,6 +259,8 @@ void editor_update_row(editor_row_t *erow) {
 
     erow->render[idx] = '\0';
     erow->rsize = idx;
+
+    editor_update_highlight(erow);
 }
 
 void editor_insert_row(unsigned at, char *str, size_t len) {
@@ -252,6 +280,7 @@ void editor_insert_row(unsigned at, char *str, size_t len) {
 
     editor_cfg.erows[at].rsize = 0;
     editor_cfg.erows[at].render = NULL;
+    editor_cfg.erows[at].highlight = NULL;
     editor_update_row(&editor_cfg.erows[at]);
 
     editor_cfg.num_erows += 1;
@@ -259,6 +288,7 @@ void editor_insert_row(unsigned at, char *str, size_t len) {
 }
 
 void editor_free_row(editor_row_t *erow) {
+    free(erow->highlight);
     free(erow->render);
     free(erow->chars);
 }
@@ -349,16 +379,34 @@ void editor_draw_rows(abuf *ab) {
             }
 
             char *chr = &editor_cfg.erows[file_row].render[editor_cfg.col_offset];
+            unsigned char *hl =
+                &editor_cfg.erows[file_row].highlight[editor_cfg.col_offset];
+            int current_colour = -1;
 
             for (unsigned i = 0; i < len; i++) {
-                if (isdigit(chr[i])) {
-                    abuf_append(ab, "\x1b[31m", 5);
+                if (hl[i] == HL_NORMAL) {
+                    if (current_colour != -1) {
+                        abuf_append(ab, "\x1b[39m", 5);
+                        current_colour = -1;
+                    }
+
                     abuf_append(ab, &chr[i], 1);
-                    abuf_append(ab, "\x1b[39m", 5);
                 } else {
+                    int colour = editor_highlight_to_colour(hl[i]);
+
+                    if (colour != current_colour) {
+                        current_colour = colour;
+                        char buf[16] = {0};
+                        unsigned colour_len =
+                            snprintf(buf, sizeof(buf), "\x1b[%um", colour);
+                        abuf_append(ab, buf, colour_len);
+                    }
+
                     abuf_append(ab, &chr[i], 1);
                 }
             }
+
+            abuf_append(ab, "\x1b[39m", 5);
         }
 
         abuf_append(ab, "\x1b[K", 3);
