@@ -348,8 +348,17 @@ void editor_draw_rows(abuf *ab) {
                 len = editor_cfg.screen_cols;
             }
 
-            abuf_append(ab, &editor_cfg.erows[file_row].render[editor_cfg.col_offset],
-                        len);
+            char *chr = &editor_cfg.erows[file_row].render[editor_cfg.col_offset];
+
+            for (unsigned i = 0; i < len; i++) {
+                if (isdigit(chr[i])) {
+                    abuf_append(ab, "\x1b[31m", 5);
+                    abuf_append(ab, &chr[i], 1);
+                    abuf_append(ab, "\x1b[39m", 5);
+                } else {
+                    abuf_append(ab, &chr[i], 1);
+                }
+            }
         }
 
         abuf_append(ab, "\x1b[K", 3);
