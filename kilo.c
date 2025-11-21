@@ -42,6 +42,14 @@ enum editor_highlight {
     HL_MATCH,
 };
 
+#define HL_HIGHLIGHT_NUMBERS (1 << 0)
+
+typedef struct {
+    char *filetype;
+    char **filematch;
+    unsigned flags;
+} editor_syntax;
+
 typedef struct {
     unsigned size;
     unsigned rsize;
@@ -64,10 +72,25 @@ typedef struct {
     char *filename;
     char status_msg[80];
     time_t status_msg_time;
+    editor_syntax *syntax;
     struct termios orig_termios;
 } editor_config_t;
 
 static editor_config_t editor_cfg;
+
+static char *C_HL_ext[] = {".c", ".h", ".cpp", NULL};
+
+// clang-format off
+static editor_syntax HLDB[] = {
+    {
+        "c",
+        C_HL_ext,
+        HL_HIGHLIGHT_NUMBERS
+    }
+};
+// clang-format on
+
+static const size_t HLDB_ENTRIES = sizeof(HLDB) / sizeof(editor_syntax);
 
 typedef struct {
     char *data;
@@ -186,6 +209,10 @@ void editor_update_highlight(editor_row_t *erow) {
     erow->highlight = (unsigned char *)realloc(erow->highlight, erow->rsize);
     memset(erow->highlight, HL_NORMAL, erow->rsize);
 
+    if (editor_cfg.syntax == NULL) {
+        return;
+    }
+
     bool prev_sep = true;
 
     unsigned i = 0;
@@ -193,12 +220,14 @@ void editor_update_highlight(editor_row_t *erow) {
         char chr = erow->render[i];
         unsigned char prev_hl = (i > 0) ? erow->highlight[i - 1] : HL_NORMAL;
 
-        if ((isdigit(chr) && (prev_sep || prev_hl == HL_NUMBER)) ||
-            (chr == '.' && prev_hl == HL_NUMBER)) {
-            erow->highlight[i] = HL_NUMBER;
-            i += 1;
-            prev_sep = false;
-            continue;
+        if (editor_cfg.syntax->flags & HL_HIGHLIGHT_NUMBERS) {
+            if ((isdigit(chr) && (prev_sep || prev_hl == HL_NUMBER)) ||
+                (chr == '.' && prev_hl == HL_NUMBER)) {
+                erow->highlight[i] = HL_NUMBER;
+                i += 1;
+                prev_sep = false;
+                continue;
+            }
         }
 
         prev_sep = is_seperator(chr);
@@ -470,8 +499,10 @@ void editor_draw_statusbar(abuf *ab) {
                  editor_cfg.filename != NULL ? editor_cfg.filename : "[No Name]",
                  editor_cfg.num_erows, editor_cfg.dirty ? "(modified)" : "");
 
-    unsigned rlen = snprintf(rstatus, sizeof(rstatus), "%u/%u", editor_cfg.cy + 1,
-                             editor_cfg.num_erows);
+    unsigned rlen =
+        snprintf(rstatus, sizeof(rstatus), "%s | %u/%u",
+                 editor_cfg.syntax != NULL ? editor_cfg.syntax->filetype : "no ft",
+                 editor_cfg.cy + 1, editor_cfg.num_erows);
 
     if (len > editor_cfg.screen_cols) {
         len = editor_cfg.screen_cols;
@@ -1024,8 +1055,8 @@ void editor_init() {
     editor_cfg.dirty = false;
     editor_cfg.filename = NULL;
     editor_cfg.status_msg_time = 0;
-
     memset(editor_cfg.status_msg, 0, sizeof(editor_cfg.status_msg));
+    editor_cfg.syntax = NULL;
 
     if (get_window_size(&editor_cfg.screen_rows, &editor_cfg.screen_cols) == -1) {
         die("init_editor :: get_window_size");
