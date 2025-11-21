@@ -39,6 +39,7 @@ enum editor_key {
 enum editor_highlight {
     HL_NORMAL = 0,
     HL_NUMBER,
+    HL_MATCH,
 };
 
 typedef struct {
@@ -192,6 +193,8 @@ int editor_highlight_to_colour(int hl) {
     switch (hl) {
         case HL_NUMBER:
             return 31;
+        case HL_MATCH:
+            return 34;
         default:
             return 37;
     }
@@ -659,6 +662,16 @@ void editor_find_callback(char *query, unsigned key) {
     static long last_match = -1;
     static short direction = 1;
 
+    static unsigned saved_hl_line = 0;
+    static char *saved_hl = NULL;
+
+    if (saved_hl != NULL) {
+        memcpy(editor_cfg.erows[saved_hl_line].highlight, saved_hl,
+               editor_cfg.erows[saved_hl_line].rsize);
+        free(saved_hl);
+        saved_hl = NULL;
+    }
+
     if (key == '\r' || key == '\x1b') {
         last_match = -1;
         direction = 1;
@@ -696,6 +709,11 @@ void editor_find_callback(char *query, unsigned key) {
             editor_cfg.cy = current;
             editor_cfg.cx = editor_row_rx_to_cx(erow, match - erow->render);
             editor_cfg.row_offset = editor_cfg.num_erows;
+
+            saved_hl_line = current;
+            saved_hl = (char *)calloc(erow->rsize, sizeof(char));
+            memcpy(saved_hl, erow->highlight, erow->rsize);
+            memset(&erow->highlight[match - erow->render], HL_MATCH, strlen(query));
             break;
         }
     }
