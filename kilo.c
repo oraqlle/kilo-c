@@ -61,11 +61,13 @@ typedef struct {
 } editor_syntax;
 
 typedef struct {
+    unsigned idx;
     unsigned size;
     unsigned rsize;
     char *chars;
     char *render;
     unsigned char *highlight;
+    bool hl_open_comment;
 } editor_row_t;
 
 typedef struct {
@@ -240,12 +242,12 @@ void editor_update_highlight(editor_row_t *erow) {
     char *mce = editor_cfg.syntax->multiline_comment_end;
 
     unsigned scs_len = scs != NULL ? strlen(scs) : 0;
-    unsigned mcs_len = scs != NULL ? strlen(mcs) : 0;
-    unsigned mce_len = scs != NULL ? strlen(mce) : 0;
+    unsigned mcs_len = mcs != NULL ? strlen(mcs) : 0;
+    unsigned mce_len = mce != NULL ? strlen(mce) : 0;
 
     bool prev_sep = true;
     char in_string = '\0';
-    char in_comment = false;
+    char in_comment = (erow->idx > 0 && editor_cfg.erows[erow->idx - 1].hl_open_comment);
 
     unsigned i = 0;
     while (i < erow->rsize) {
@@ -273,7 +275,7 @@ void editor_update_highlight(editor_row_t *erow) {
         if (mcs_len > 0 && mce_len > 0 && !in_string) {
             if (in_comment) {
                 erow->highlight[i] = HL_ML_COMMENT;
-                if (!strncmp(&erow->render[i], mcs, mcs_len)) {
+                if (!strncmp(&erow->render[i], mce, mce_len)) {
                     memset(&erow->highlight[i], HL_ML_COMMENT, mce_len);
                     i += mce_len;
                     in_comment = false;
@@ -356,6 +358,13 @@ void editor_update_highlight(editor_row_t *erow) {
 
         prev_sep = is_seperator(chr);
         i += 1;
+    }
+
+    bool changed = (erow->hl_open_comment != in_comment);
+    erow->hl_open_comment = in_comment;
+
+    if (changed && erow->idx + 1 < editor_cfg.num_erows) {
+        editor_update_highlight(&editor_cfg.erows[erow->idx + 1]);
     }
 }
 
@@ -487,6 +496,12 @@ void editor_insert_row(unsigned at, char *str, size_t len) {
     memmove(&editor_cfg.erows[at + 1], &editor_cfg.erows[at],
             sizeof(editor_row_t) * (editor_cfg.num_erows - at));
 
+    for (unsigned j = at + 1; j <= editor_cfg.num_erows; j++) {
+        editor_cfg.erows[j].idx += 1;
+    }
+
+    editor_cfg.erows[at].idx = at;
+
     editor_cfg.erows[at].size = len;
     editor_cfg.erows[at].chars = (char *)calloc(len + 1, sizeof(char));
     memcpy(editor_cfg.erows[at].chars, str, len);
@@ -495,6 +510,7 @@ void editor_insert_row(unsigned at, char *str, size_t len) {
     editor_cfg.erows[at].rsize = 0;
     editor_cfg.erows[at].render = NULL;
     editor_cfg.erows[at].highlight = NULL;
+    editor_cfg.erows[at].hl_open_comment = false;
     editor_update_row(&editor_cfg.erows[at]);
 
     editor_cfg.num_erows += 1;
@@ -515,6 +531,11 @@ void editor_del_row(unsigned at) {
     editor_free_row(&editor_cfg.erows[at]);
     memmove(&editor_cfg.erows[at], &editor_cfg.erows[at + 1],
             sizeof(editor_row_t) * (editor_cfg.num_erows - at - 1));
+
+    for (unsigned j = at; j < editor_cfg.num_erows - 1; j++) {
+        editor_cfg.erows[j].idx -= 1;
+    }
+
     editor_cfg.num_erows -= 1;
     editor_cfg.dirty = true;
 }
