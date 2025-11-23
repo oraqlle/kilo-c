@@ -39,6 +39,7 @@ enum editor_key {
 enum editor_highlight {
     HL_NORMAL = 0,
     HL_COMMENT,
+    HL_ML_COMMENT,
     HL_KEYWORD1,
     HL_KEYWORD2,
     HL_STRING,
@@ -54,6 +55,8 @@ typedef struct {
     char **filematch;
     char **keywords;
     char *singleline_comment_start;
+    char *multiline_comment_start;
+    char *multiline_comment_end;
     unsigned flags;
 } editor_syntax;
 
@@ -101,6 +104,7 @@ static editor_syntax HLDB[] = {
         C_HL_ext,
         C_HL_keywords,
         "//",
+        "/*", "*/",
         HL_HIGHLIGHT_NUMBERS | HL_HIGHLIGHT_STRINGS
     }
 };
@@ -232,20 +236,57 @@ void editor_update_highlight(editor_row_t *erow) {
     char **keywords = editor_cfg.syntax->keywords;
 
     char *scs = editor_cfg.syntax->singleline_comment_start;
+    char *mcs = editor_cfg.syntax->multiline_comment_start;
+    char *mce = editor_cfg.syntax->multiline_comment_end;
+
     unsigned scs_len = scs != NULL ? strlen(scs) : 0;
+    unsigned mcs_len = scs != NULL ? strlen(mcs) : 0;
+    unsigned mce_len = scs != NULL ? strlen(mce) : 0;
 
     bool prev_sep = true;
     char in_string = '\0';
+    char in_comment = false;
 
     unsigned i = 0;
     while (i < erow->rsize) {
         char chr = erow->render[i];
         unsigned char prev_hl = (i > 0) ? erow->highlight[i - 1] : HL_NORMAL;
 
-        if (scs_len > 0 && !in_string) {
+        /* test */
+        if (scs_len > 0 && !in_string && !in_comment) {
             if (!strncmp(&erow->render[i], scs, scs_len)) {
                 memset(&erow->highlight[i], HL_COMMENT, erow->rsize - i);
                 break;
+            }
+        }
+
+        /*
+         * test
+         *
+         * if
+         * case
+         * typedef
+         *
+         * sjifhdshn'
+         * dhfvbhdHGhfbhfbnbjfjbjkfnbjgjbngfkjvnjdfknbgfnbkjgfnbjgfn
+         */
+        if (mcs_len > 0 && mce_len > 0 && !in_string) {
+            if (in_comment) {
+                erow->highlight[i] = HL_ML_COMMENT;
+                if (!strncmp(&erow->render[i], mcs, mcs_len)) {
+                    memset(&erow->highlight[i], HL_ML_COMMENT, mce_len);
+                    i += mce_len;
+                    in_comment = false;
+                    prev_sep = true;
+                    continue;
+                } else {
+                    i += 1;
+                    continue;
+                }
+            } else if (!strncmp(&erow->render[i], mcs, mcs_len)) {
+                memset(&erow->highlight[i], HL_ML_COMMENT, mcs_len);
+                i += mcs_len;
+                in_comment = true;
             }
         }
 
@@ -321,6 +362,7 @@ void editor_update_highlight(editor_row_t *erow) {
 int editor_highlight_to_colour(int hl) {
     switch (hl) {
         case HL_COMMENT:
+        case HL_ML_COMMENT:
             return 36;
         case HL_KEYWORD1:
             return 33;
