@@ -39,6 +39,8 @@ enum editor_key {
 enum editor_highlight {
     HL_NORMAL = 0,
     HL_COMMENT,
+    HL_KEYWORD1,
+    HL_KEYWORD2,
     HL_STRING,
     HL_NUMBER,
     HL_MATCH,
@@ -50,6 +52,7 @@ enum editor_highlight {
 typedef struct {
     char *filetype;
     char **filematch;
+    char **keywords;
     char *singleline_comment_start;
     unsigned flags;
 } editor_syntax;
@@ -85,10 +88,18 @@ static editor_config_t editor_cfg;
 static char *C_HL_ext[] = {".c", ".h", ".cpp", NULL};
 
 // clang-format off
+static char *C_HL_keywords[] = {
+    "switch", "if",      "while",   "for",    "break",     "continue", "return", "else",
+    "struct", "union",   "typedef", "static", "enum",      "class",    "case",
+    "int|", "long|",  "double|", "float|",  "char|",  "unsigned|", "signed|",  "void|",
+    NULL
+};
+
 static editor_syntax HLDB[] = {
     {
         "c",
         C_HL_ext,
+        C_HL_keywords,
         "//",
         HL_HIGHLIGHT_NUMBERS | HL_HIGHLIGHT_STRINGS
     }
@@ -218,6 +229,8 @@ void editor_update_highlight(editor_row_t *erow) {
         return;
     }
 
+    char **keywords = editor_cfg.syntax->keywords;
+
     char *scs = editor_cfg.syntax->singleline_comment_start;
     unsigned scs_len = scs != NULL ? strlen(scs) : 0;
 
@@ -273,6 +286,33 @@ void editor_update_highlight(editor_row_t *erow) {
             }
         }
 
+        if (prev_sep) {
+
+            unsigned j = 0;
+            for (; keywords[j] != NULL; j++) {
+                unsigned klen = strlen(keywords[j]);
+                bool kw2 = keywords[j][klen - 1] == '|';
+
+                if (kw2) {
+                    klen -= 1;
+                }
+
+                if (!strncmp(&erow->render[i], keywords[j], klen) &&
+                    is_seperator(erow->render[i + klen])) {
+
+                    memset(&erow->highlight[i], kw2 ? HL_KEYWORD2 : HL_KEYWORD1, klen);
+                    i += klen;
+
+                    break;
+                }
+            }
+
+            if (keywords[j] != NULL) {
+                prev_sep = false;
+                continue;
+            }
+        }
+
         prev_sep = is_seperator(chr);
         i += 1;
     }
@@ -282,6 +322,10 @@ int editor_highlight_to_colour(int hl) {
     switch (hl) {
         case HL_COMMENT:
             return 36;
+        case HL_KEYWORD1:
+            return 33;
+        case HL_KEYWORD2:
+            return 32;
         case HL_STRING:
             return 35;
         case HL_NUMBER:
