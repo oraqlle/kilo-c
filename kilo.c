@@ -38,6 +38,7 @@ enum editor_key {
 
 enum editor_highlight {
     HL_NORMAL = 0,
+    HL_COMMENT,
     HL_STRING,
     HL_NUMBER,
     HL_MATCH,
@@ -49,6 +50,7 @@ enum editor_highlight {
 typedef struct {
     char *filetype;
     char **filematch;
+    char *singleline_comment_start;
     unsigned flags;
 } editor_syntax;
 
@@ -87,6 +89,7 @@ static editor_syntax HLDB[] = {
     {
         "c",
         C_HL_ext,
+        "//",
         HL_HIGHLIGHT_NUMBERS | HL_HIGHLIGHT_STRINGS
     }
 };
@@ -215,6 +218,9 @@ void editor_update_highlight(editor_row_t *erow) {
         return;
     }
 
+    char *scs = editor_cfg.syntax->singleline_comment_start;
+    unsigned scs_len = scs != NULL ? strlen(scs) : 0;
+
     bool prev_sep = true;
     char in_string = '\0';
 
@@ -222,6 +228,13 @@ void editor_update_highlight(editor_row_t *erow) {
     while (i < erow->rsize) {
         char chr = erow->render[i];
         unsigned char prev_hl = (i > 0) ? erow->highlight[i - 1] : HL_NORMAL;
+
+        if (scs_len > 0 && !in_string) {
+            if (!strncmp(&erow->render[i], scs, scs_len)) {
+                memset(&erow->highlight[i], HL_COMMENT, erow->rsize - i);
+                break;
+            }
+        }
 
         if (editor_cfg.syntax->flags & HL_HIGHLIGHT_STRINGS) {
             if (in_string != '\0') {
@@ -267,6 +280,8 @@ void editor_update_highlight(editor_row_t *erow) {
 
 int editor_highlight_to_colour(int hl) {
     switch (hl) {
+        case HL_COMMENT:
+            return 36;
         case HL_STRING:
             return 35;
         case HL_NUMBER:
