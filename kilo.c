@@ -38,11 +38,13 @@ enum editor_key {
 
 enum editor_highlight {
     HL_NORMAL = 0,
+    HL_STRING,
     HL_NUMBER,
     HL_MATCH,
 };
 
 #define HL_HIGHLIGHT_NUMBERS (1 << 0)
+#define HL_HIGHLIGHT_STRINGS (1 << 1)
 
 typedef struct {
     char *filetype;
@@ -85,7 +87,7 @@ static editor_syntax HLDB[] = {
     {
         "c",
         C_HL_ext,
-        HL_HIGHLIGHT_NUMBERS
+        HL_HIGHLIGHT_NUMBERS | HL_HIGHLIGHT_STRINGS
     }
 };
 // clang-format on
@@ -214,11 +216,39 @@ void editor_update_highlight(editor_row_t *erow) {
     }
 
     bool prev_sep = true;
+    char in_string = '\0';
 
     unsigned i = 0;
     while (i < erow->rsize) {
         char chr = erow->render[i];
         unsigned char prev_hl = (i > 0) ? erow->highlight[i - 1] : HL_NORMAL;
+
+        if (editor_cfg.syntax->flags & HL_HIGHLIGHT_STRINGS) {
+            if (in_string != '\0') {
+                erow->highlight[i] = HL_STRING;
+
+                if (chr == '\\' && i + 1 < erow->rsize) {
+                    erow->highlight[i + 1] = HL_STRING;
+                    i += 2;
+                    continue;
+                }
+
+                if (chr == in_string) {
+                    in_string = false;
+                }
+
+                i += 1;
+                prev_sep = true;
+                continue;
+            } else {
+                if (chr == '"' || chr == '\'') {
+                    in_string = chr;
+                    erow->highlight[i] = HL_STRING;
+                    i += 1;
+                    continue;
+                }
+            }
+        }
 
         if (editor_cfg.syntax->flags & HL_HIGHLIGHT_NUMBERS) {
             if ((isdigit(chr) && (prev_sep || prev_hl == HL_NUMBER)) ||
@@ -237,6 +267,8 @@ void editor_update_highlight(editor_row_t *erow) {
 
 int editor_highlight_to_colour(int hl) {
     switch (hl) {
+        case HL_STRING:
+            return 35;
         case HL_NUMBER:
             return 31;
         case HL_MATCH:
@@ -266,7 +298,7 @@ void editor_select_syntax() {
                 (!is_ext && strstr(editor_cfg.filename, syntax->filematch[i]))) {
                 editor_cfg.syntax = syntax;
 
-                for(unsigned filerow = 0; filerow < editor_cfg.num_erows; filerow++) {
+                for (unsigned filerow = 0; filerow < editor_cfg.num_erows; filerow++) {
                     editor_update_highlight(&editor_cfg.erows[filerow]);
                 }
 
