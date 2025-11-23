@@ -556,7 +556,19 @@ void editor_draw_rows(abuf *ab) {
             int current_colour = -1;
 
             for (unsigned i = 0; i < len; i++) {
-                if (hl[i] == HL_NORMAL) {
+                if (iscntrl(chr[i])) {
+                    char sym = (chr[i] <= 26) ? '@' + chr[i] : '?';
+                    abuf_append(ab, "\x1b[7m", 4);
+                    abuf_append(ab, &sym, 1);
+                    abuf_append(ab, "\x1b[m", 3);
+
+                    if (current_colour != -1) {
+                        char buf[16] = {0};
+                        unsigned clen =
+                            snprintf(buf, sizeof(buf), "\x1b]%dm", current_colour);
+                        abuf_append(ab, buf, clen);
+                    }
+                } else if (hl[i] == HL_NORMAL) {
                     if (current_colour != -1) {
                         abuf_append(ab, "\x1b[39m", 5);
                         current_colour = -1;
