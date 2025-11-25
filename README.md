@@ -1,6 +1,6 @@
 # Kilo Editor
 
-A simple nano inspired editor written in C.
+A simple nano inspired editor written in C in under 1000 lines of code[^1].
 
 ## Usage
 
@@ -26,4 +26,6 @@ make dkilo
 
 Built following [tutorial from snaptoken](https://viewsourcecode.org/snaptoken/kilo/index.html)
 and based on Salvatore Sanfilippo aka antirez original implementation.
+
+[^1]: Made possible by horrible formatting
 
