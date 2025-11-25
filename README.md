@@ -12,6 +12,16 @@ kilo <filename>
 * `<C-s>` - Save
 * `<C-f>` - String search
 
+## Build
+
+```sh
+make kilo
+
+# ... or for debug builds
+
+make dkilo
+```
+
 ## Notes
 
 Built following [tutorial from snaptoken](https://viewsourcecode.org/snaptoken/kilo/index.html)
